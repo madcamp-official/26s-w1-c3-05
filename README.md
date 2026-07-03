@@ -48,7 +48,7 @@
 
 <!-- Figma 링크 또는 이미지 첨부 -->
 
----
+---https://www.figma.com/design/TlUTjkjFJAzOmrYmchn3nz/%EB%AC%98%EC%BA%A3%EB%AA%AC%EA%B3%A0?node-id=3-2&p=f&t=UWYx75Opi0zk6MiR-0
 
 ## DB 스키마
 
