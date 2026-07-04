@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>KAIST 3D 지도</title>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="hint">더블탭: 시점 전환 · 마커 시점에서 한 손가락: 회전 · 두 손가락: 확대</div>
+
+    <!-- 카메라 실행 버튼 (아래 중앙) -->
+    <button id="camera-btn" aria-label="카메라 실행">
+      <svg viewBox="0 0 24 24" width="32" height="32" fill="none" aria-hidden="true">
+        <path
+          d="M4 8.8C4 7.7 4.9 6.8 6 6.8h1.7l.7-1.35A1 1 0 0 1 9.3 4.9h5.4a1 1 0 0 1 .9.55l.7 1.35H18c1.1 0 2 .9 2 2V17c0 1.1-.9 2-2 2H6c-1.1 0-2-.9-2-2V8.8Z"
+          stroke="#2b9e7f"
+          stroke-width="1.7"
+          stroke-linejoin="round"
+        />
+        <circle cx="12" cy="12.7" r="3.3" stroke="#2b9e7f" stroke-width="1.7" />
+      </svg>
+    </button>
+
+    <!-- 촬영한 고양이 사진 모아보기 (오른쪽 아래) -->
+    <button id="cat-gallery-btn" aria-label="내 고양이 사진 보기">
+      <span class="cat-icon-shell" aria-hidden="true">
+        <svg viewBox="0 0 48 48" width="42" height="42" fill="none">
+          <path d="M11 19 9 8l10 6.5A20 20 0 0 1 24 14c1.8 0 3.5.2 5 .7L39 8l-2 11c2 2.3 3 5 3 8 0 8-6.7 13-16 13S8 35 8 27c0-3 1-5.8 3-8Z" fill="#fff8e7" stroke="#2b9e7f" stroke-width="2.4" stroke-linejoin="round"/>
+          <path d="M16 25h.1M32 25h.1" stroke="#3e665c" stroke-width="3.2" stroke-linecap="round"/>
+          <path d="m22 29 2 1.7 2-1.7M24 31v2.5M19 33c1.5 1.4 3.2 2 5 2s3.5-.6 5-2" stroke="#3e665c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M13 29 5 27m8 6-8 2m30-6 8-2m-8 6 8 2" stroke="#73c9ae" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="cat-button-label">내 고양이</span>
+    </button>
+
+    <!-- 폰 기본 카메라를 여는 파일 입력 (버튼이 대신 눌러줌) -->
+    <input
+      id="camera-input"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      hidden
+    />
+
+    <!-- 촬영한 사진 미리보기 -->
+    <div id="photo-view" hidden>
+      <img id="photo-preview" alt="촬영한 사진" />
+      <button id="photo-close" aria-label="닫기">✕</button>
+    </div>
+
+    <!-- 촬영한 사진 목록 -->
+    <section id="cat-gallery" aria-label="내 고양이 사진" hidden>
+      <header class="gallery-header">
+        <div>
+          <p>KAIST에서 만난</p>
+          <h1>내 고양이</h1>
+        </div>
+        <button id="gallery-close" aria-label="내 고양이 닫기">✕</button>
+      </header>
+      <div id="gallery-empty">
+        <span class="empty-cat" aria-hidden="true">🐾</span>
+        <strong>아직 만난 고양이가 없어요</strong>
+        <p>지도 아래 카메라로 고양이를 찍어보세요.</p>
+      </div>
+      <div id="gallery-grid"></div>
+    </section>
+
+    <!-- 같은 위치에서 찍은 사진 묶음 -->
+    <div id="location-photos" hidden>
+      <button id="location-photos-backdrop" aria-label="사진 묶음 닫기"></button>
+      <section class="location-photo-sheet" aria-label="이 위치의 고양이 사진">
+        <header class="location-photo-header">
+          <div>
+            <p>이곳에서 만난</p>
+            <h2>고양이들 <span id="location-photo-count"></span></h2>
+          </div>
+          <button id="location-photos-close" aria-label="사진 묶음 닫기">✕</button>
+        </header>
+        <div id="location-photo-strip"></div>
+      </section>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
