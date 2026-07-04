@@ -17,6 +17,7 @@ __pycache__/
 uploads/
 data/
 models/
+assets/
 
 # OS/editor
 .DS_Store
