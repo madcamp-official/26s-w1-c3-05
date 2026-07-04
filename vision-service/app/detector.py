@@ -23,7 +23,12 @@ class CatDetector:
         return self._model
 
     async def detect_from_url(self, image_url: str) -> tuple[bool, float]:
-        image = await self._download_image(image_url)
+        image = await self.download_image(image_url)
+        best_cat_confidence = self.best_cat_confidence(image)
+
+        return best_cat_confidence >= self.threshold, round(best_cat_confidence, 4)
+
+    def best_cat_confidence(self, image: Image.Image) -> float:
         results = self.model.predict(image, verbose=False)
 
         best_cat_confidence = 0.0
@@ -37,9 +42,33 @@ class CatDetector:
                 if class_id == COCO_CAT_CLASS_ID:
                     best_cat_confidence = max(best_cat_confidence, confidence)
 
-        return best_cat_confidence >= self.threshold, round(best_cat_confidence, 4)
+        return best_cat_confidence
 
-    async def _download_image(self, image_url: str) -> Image.Image:
+    def crop_largest_cat(self, image: Image.Image) -> Image.Image:
+        results = self.model.predict(image, verbose=False)
+        best_box: tuple[int, int, int, int] | None = None
+        best_area = 0.0
+
+        for result in results:
+            if result.boxes is None:
+                continue
+
+            for box in result.boxes:
+                if int(box.cls.item()) != COCO_CAT_CLASS_ID:
+                    continue
+
+                x1, y1, x2, y2 = [int(value) for value in box.xyxy[0].tolist()]
+                area = max(0, x2 - x1) * max(0, y2 - y1)
+                if area > best_area:
+                    best_area = area
+                    best_box = (x1, y1, x2, y2)
+
+        if best_box is None:
+            return image
+
+        return image.crop(best_box)
+
+    async def download_image(self, image_url: str) -> Image.Image:
         async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True) as client:
             response = await client.get(image_url)
             response.raise_for_status()

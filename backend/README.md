@@ -145,7 +145,7 @@ VISION_PROVIDER="http"
 VISION_SERVICE_URL="http://localhost:8001"
 ```
 
-The HTTP contract is documented in `vision-service.md`. For the MVP, the HTTP service handles cat/non-cat detection and the backend still uses the mock identity matcher for existing-cat candidate scoring.
+The HTTP contract is documented in `vision-service.md`. The real vision service handles both cat/non-cat detection and representative-photo based cat identification.
 
 To run the real YOLO-based service with Docker:
 

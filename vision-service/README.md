@@ -6,6 +6,7 @@ It exposes the API expected by the backend:
 
 ```http
 POST /cat-detection
+POST /cat-identification
 ```
 
 ## Run With Docker
@@ -43,4 +44,37 @@ uvicorn app.main:app --reload --port 8001
 - `CAT_CONFIDENCE_THRESHOLD`: minimum confidence for accepting a cat detection. Default: `0.25`
 - `IMAGE_DOWNLOAD_TIMEOUT_SECONDS`: image download timeout. Default: `10`
 
-The first run downloads the model weights automatically.
+The first run downloads the YOLO and MobileNet weights automatically.
+
+## Identification
+
+`POST /cat-identification` compares the uploaded image against each candidate cat's representative images.
+
+Request:
+
+```json
+{
+  "imageUrl": "http://localhost:4000/uploads/new-photo.jpg",
+  "candidates": [
+    {
+      "catId": 1,
+      "imageUrls": ["https://example.com/mango.jpg"]
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "candidates": [
+    {
+      "catId": 1,
+      "imageSimilarityScore": 0.8732
+    }
+  ]
+}
+```
+
+The service crops the largest detected cat with YOLO and compares MobileNet image embeddings using cosine similarity.
