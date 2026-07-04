@@ -11,8 +11,10 @@ build/
 
 # Runtime artifacts
 *.log
+*.pt
 uploads/
 data/
+models/
 
 # OS/editor
 .DS_Store

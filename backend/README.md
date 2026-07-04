@@ -146,3 +146,17 @@ VISION_SERVICE_URL="http://localhost:8001"
 ```
 
 The HTTP contract is documented in `vision-service.md`. For the MVP, the HTTP service handles cat/non-cat detection and the backend still uses the mock identity matcher for existing-cat candidate scoring.
+
+To run the real YOLO-based service with Docker:
+
+```bash
+docker compose up -d vision
+```
+
+When the vision service runs in Docker and the backend runs on the host, use:
+
+```env
+VISION_PROVIDER="http"
+VISION_SERVICE_URL="http://localhost:8001"
+PUBLIC_BASE_URL="http://host.docker.internal:4000"
+```
