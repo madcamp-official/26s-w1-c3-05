@@ -85,9 +85,9 @@ export class HttpCatVisionService implements CatVisionService {
 
   private async identifyCat(input: CatVisionInput, catDetectionConfidence: number): Promise<CatVisionResult> {
     const cats = await findActiveCats()
-    const referencePhotos = await findCatReferencePhotoUrls(cats.map((cat) => cat.id))
+    const referencePhotos = await findCatReferencePhotoUrls(cats.map((cat) => Number(cat.id)))
     const referenceUrlsByCatId = this.buildReferenceUrlsByCatId(cats, referencePhotos)
-    const candidateCats = cats.filter((cat) => (referenceUrlsByCatId.get(cat.id)?.length ?? 0) > 0)
+    const candidateCats = cats.filter((cat) => (referenceUrlsByCatId.get(Number(cat.id))?.length ?? 0) > 0)
 
     if (candidateCats.length === 0) {
       return {
@@ -108,8 +108,8 @@ export class HttpCatVisionService implements CatVisionService {
       body: JSON.stringify({
         imageUrl: this.resolveImageUrl(input.imageUrl),
         candidates: candidateCats.map((cat) => ({
-          catId: cat.id,
-          imageUrls: referenceUrlsByCatId.get(cat.id)!.map((imageUrl) => this.resolveImageUrl(imageUrl)),
+          catId: Number(cat.id),
+          imageUrls: referenceUrlsByCatId.get(Number(cat.id))!.map((imageUrl) => this.resolveImageUrl(imageUrl)),
         })),
       }),
     })
@@ -123,7 +123,7 @@ export class HttpCatVisionService implements CatVisionService {
       throw new Error('Vision service returned invalid cat-identification response')
     }
 
-    const catById = new Map(cats.map((cat) => [cat.id, cat]))
+    const catById = new Map(cats.map((cat) => [Number(cat.id), cat]))
     const candidates: CatVisionCandidate[] = data.candidates
       .map((item) => this.toCandidate(item as IdentificationCandidateResponse, catById, input))
       .filter((item): item is CatVisionCandidate => item !== null)
@@ -174,16 +174,17 @@ export class HttpCatVisionService implements CatVisionService {
 
     for (const cat of cats) {
       if (cat.representative_photo_url) {
-        urlsByCatId.set(cat.id, [cat.representative_photo_url])
+        urlsByCatId.set(Number(cat.id), [cat.representative_photo_url])
       }
     }
 
     for (const photo of referencePhotos) {
-      const urls = urlsByCatId.get(photo.cat_id) ?? []
+      const catId = Number(photo.cat_id)
+      const urls = urlsByCatId.get(catId) ?? []
       if (!urls.includes(photo.image_url)) {
         urls.push(photo.image_url)
       }
-      urlsByCatId.set(photo.cat_id, urls)
+      urlsByCatId.set(catId, urls)
     }
 
     return urlsByCatId

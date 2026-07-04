@@ -57,6 +57,8 @@ await upsertPlacement({ catId: 1, sourceSightingId: 1, latitude: 36.3726, longit
 await upsertPlacement({ catId: 2, sourceSightingId: 2, latitude: 36.3717, longitude: 127.3611, zoneId: 2 })
 await upsertPlacement({ catId: 3, sourceSightingId: 3, latitude: 36.3734, longitude: 127.3615, zoneId: 3 })
 
+await syncSerialSequences()
+
 await pool.end()
 console.log('Seeded PostgreSQL database. Login: catlover123 / 12345678, admin / 12345678')
 
@@ -69,4 +71,20 @@ async function seedPhoto(id: number, userId: number, catId: number, imageUrl: st
     [id, userId, catId, imageUrl, latitude, longitude, zoneId, takenAt, representative],
   )
   await createSighting({ catId, userId, photoId: id, latitude, longitude, zoneId, seenAt: takenAt })
+}
+
+async function syncSerialSequences() {
+  const tables = [
+    'users',
+    'campus_zones',
+    'cats',
+    'cat_photos',
+    'cat_sightings',
+    'cat_placements',
+    'user_cat_collections',
+  ]
+
+  for (const table of tables) {
+    await run(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 1))`)
+  }
 }
