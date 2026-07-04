@@ -1,0 +1,764 @@
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import './style.css'
+
+// KAIST 본원 (대전) 중심 좌표: [경도, 위도]
+const KAIST_CENTER = [127.3628, 36.3721]
+
+// 초기: 캠퍼스 전체가 한눈에 보이는 시점 (줌을 낮추고 살짝 위에서 내려다봄)
+const OVERVIEW_VIEW = {
+  center: KAIST_CENTER,
+  zoom: 13.8,
+  pitch: 45,
+  bearing: -20,
+}
+
+// 마커 시점(1인칭)의 궤도 카메라 설정
+// 줌이 낮을수록(축소) 카메라가 높고 멀리서 내려다보고,
+// 줌이 높을수록(확대) 카메라가 낮아지며 마커를 옆에서 바라본다 → 곡선 궤도 느낌
+const FOLLOW_MIN_ZOOM = 16 // 가장 축소(카메라 최대 높이)
+const FOLLOW_MAX_ZOOM = 20 // 가장 확대(카메라 최저 높이)
+const FOLLOW_PITCH_MIN = 15 // 최대 높이일 때 각도(거의 수직으로 내려다봄)
+const FOLLOW_PITCH_MAX = 72 // 확대일 때 각도(옆에서, maxPitch 75 이내)
+const FOLLOW_START_ZOOM = 19 // 진입 시 줌
+const ORBIT_ROT_SPEED = 0.4 // 한 손가락 스와이프 1px당 회전 각도(도)
+const PINCH_SENSITIVITY = 2.4 // 핀치 확대/축소 감도(클수록 민감)
+
+const map = new maplibregl.Map({
+  container: 'map',
+  // 모뉴먼트 밸리 풍으로 변환한 커스텀 스타일 (public/monument-style.json)
+  style: '/monument-style.json',
+  ...OVERVIEW_VIEW,
+  maxPitch: 75,
+  // 캠퍼스 주변을 크게 벗어나지 못하게 제한 (선택 사항)
+  maxBounds: [
+    [127.32, 36.35], // 남서쪽 모서리
+    [127.41, 36.40], // 북동쪽 모서리
+  ],
+  attributionControl: { compact: true },
+})
+
+// 기본 더블탭 확대 동작 끄기 (우리가 직접 더블탭을 시점 전환에 사용)
+map.doubleClickZoom.disable()
+
+// ─────────────────────────────────────────────
+// 텍스처: 잔디 / 건물부지(꽃밭) / 물 이미지를 fill-pattern으로 입힘
+// 이미지는 public/textures/ 에 아래 파일명으로 저장돼 있어야 함
+// ─────────────────────────────────────────────
+const TEXTURES = [
+  { name: 'tex-grass', url: '/textures/grass.png' },
+  { name: 'tex-flowers', url: '/textures/flowers.png' },
+  { name: 'tex-water', url: '/textures/water.png' },
+]
+
+// 스타일이 준비되기를 기다리는 동안 세 이미지를 동시에 미리 받는다.
+// 기존처럼 한 장씩 기다리지 않아 첫 텍스처 표시까지의 지연이 짧아진다.
+const textureLoadPromise = Promise.all(
+  TEXTURES.map(async (texture) => {
+    try {
+      const image = await map.loadImage(texture.url)
+      return { ...texture, image: image.data }
+    } catch (error) {
+      console.warn('텍스처 로드 실패:', texture.url, error)
+      return null
+    }
+  })
+)
+
+// 잔디 텍스처를 입힐 초록색 지면 레이어들
+const GRASS_LAYERS = [
+  'park',
+  'landuse_residential',
+  'landcover_grass',
+  'landcover_wood',
+  'landcover_ice',
+  'landcover_wetland',
+  'landuse_pitch',
+  'landuse_track',
+  'landuse_cemetery',
+  'landuse_hospital',
+  'landuse_school',
+  'landcover_sand',
+]
+
+async function applyTextures() {
+  // 미리 병렬로 받아둔 이미지 등록
+  const loadedTextures = await textureLoadPromise
+  for (const texture of loadedTextures) {
+    if (texture && !map.hasImage(texture.name)) {
+      map.addImage(texture.name, texture.image)
+    }
+  }
+  // 잔디: 배경 + 초록 지면 레이어 전부
+  if (map.getLayer('background')) {
+    map.setPaintProperty('background', 'background-pattern', 'tex-grass')
+  }
+  for (const id of GRASS_LAYERS) {
+    if (map.getLayer(id)) map.setPaintProperty(id, 'fill-pattern', 'tex-grass')
+  }
+  // 건물부지: 꽃밭 텍스처
+  if (map.getLayer('buildings-3d')) {
+    map.setPaintProperty('buildings-3d', 'fill-pattern', 'tex-flowers')
+  }
+  // 물
+  if (map.getLayer('water')) {
+    map.setPaintProperty('water', 'fill-pattern', 'tex-water')
+  }
+  map.triggerRepaint() // 패턴 적용 후 즉시 다시 그리기
+}
+
+// 스타일이 파싱되면(레이어 생성 시점) 하늘 + 텍스처 적용.
+// 'load' 이벤트는 sprite/glyphs 로딩이 느리면 지연될 수 있어 'styledata'로 트리거.
+let sceneInited = false
+function initScene() {
+  if (sceneInited) return
+  if (!map.getLayer('background')) return // 아직 스타일 파싱 전
+  sceneInited = true
+  // 지평선 하늘 그라데이션 (기울였을 때 게임 같은 분위기)
+  map.setSky({
+    'sky-color': '#8fd8cd',
+    'horizon-color': '#fdeedb',
+    'fog-color': '#fdeedb',
+    'sky-horizon-blend': 0.6,
+    'horizon-fog-blend': 0.7,
+    'fog-ground-blend': 0.9,
+  })
+  applyTextures()
+}
+map.on('styledata', initScene)
+map.on('load', initScene)
+initScene()
+
+// ─────────────────────────────────────────────
+// 캐릭터 마커 (임시 디자인 — 나중에 교체 예정)
+// 카메라 높이와 지도 경사에 관계없이 화면을 향해 똑바로 세운다.
+// 서브픽셀 좌표를 사용해 확대/축소 중 픽셀 반올림으로 인한 떨림을 줄인다.
+// ─────────────────────────────────────────────
+const characterEl = document.createElement('div')
+characterEl.className = 'character-marker'
+const characterMarker = new maplibregl.Marker({
+  element: characterEl,
+  pitchAlignment: 'viewport',
+  rotationAlignment: 'viewport',
+  subpixelPositioning: true,
+})
+let characterMarkerAdded = false
+
+let userPos = null // 최근 GPS 위치 [lng, lat]
+let userPosAccuracy = Infinity // 최근 GPS 정확도(미터)
+let isFollowing = false // false = 전체 지도 시점, true = 마커 시점
+let isTransitioning = false // flyTo 애니메이션 중인지
+
+// 마커 시점 궤도 카메라 상태
+let orbitBearing = 0 // 카메라가 마커를 도는 각도
+let orbitZoom = FOLLOW_START_ZOOM // 카메라와 마커의 가까운 정도
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
+
+// 줌 값에 따라 카메라 각도(pitch)를 함께 결정 → 확대할수록 마커를 옆에서 보는 곡선 궤도
+function pitchForZoom(z) {
+  const t = clamp((z - FOLLOW_MIN_ZOOM) / (FOLLOW_MAX_ZOOM - FOLLOW_MIN_ZOOM), 0, 1)
+  return FOLLOW_PITCH_MIN + t * (FOLLOW_PITCH_MAX - FOLLOW_PITCH_MIN)
+}
+
+function markerLngLat() {
+  return userPos ?? KAIST_CENTER
+}
+
+// 현재 궤도 상태를 카메라에 즉시 반영 (마커를 항상 화면 중심에 두고 바라봄)
+function applyOrbit() {
+  map.jumpTo({
+    center: markerLngLat(),
+    zoom: orbitZoom,
+    bearing: orbitBearing,
+    pitch: pitchForZoom(orbitZoom),
+  })
+}
+
+map.on('moveend', () => {
+  isTransitioning = false
+})
+
+// ─────────────────────────────────────────────
+// GPS: 실시간 내 위치를 받아 마커를 이동
+// ─────────────────────────────────────────────
+function startPositionTracking() {
+  if (!('geolocation' in navigator)) return
+  navigator.geolocation.watchPosition(
+    (pos) => {
+      userPos = [pos.coords.longitude, pos.coords.latitude]
+      userPosAccuracy = pos.coords.accuracy
+      characterMarker.setLngLat(userPos)
+      if (!characterMarkerAdded) {
+        characterMarker.addTo(map)
+        characterMarkerAdded = true
+      }
+      // 마커 시점일 때는 카메라도 내 위치를 따라감
+      if (isFollowing && !isTransitioning) {
+        map.setCenter(userPos)
+      }
+    },
+    (err) => console.warn('위치 정보를 가져오지 못했습니다.', err),
+    { enableHighAccuracy: true, maximumAge: 1000 }
+  )
+}
+
+startPositionTracking()
+
+// ─────────────────────────────────────────────
+// 기본 제스처 핸들러 on/off
+// 마커 시점에서는 우리가 직접 터치를 처리하므로 기본 팬/줌/회전을 끈다.
+// ─────────────────────────────────────────────
+const DEFAULT_HANDLERS = [
+  'dragPan',
+  'dragRotate',
+  'touchZoomRotate',
+  'touchPitch',
+  'scrollZoom',
+  'keyboard',
+]
+function setDefaultGestures(enabled) {
+  for (const name of DEFAULT_HANDLERS) {
+    if (enabled) map[name].enable()
+    else map[name].disable()
+  }
+}
+
+// ─────────────────────────────────────────────
+// 시점 토글: 마커 시점 ↔ 전체 지도 시점
+// ─────────────────────────────────────────────
+function toggleView() {
+  isFollowing = !isFollowing
+  isTransitioning = true
+
+  if (isFollowing) {
+    // 마커(내 위치) 시점으로: 궤도 카메라 초기화 + 기본 제스처 끄기
+    orbitBearing = 0
+    orbitZoom = FOLLOW_START_ZOOM
+    setDefaultGestures(false)
+    map.flyTo({
+      center: markerLngLat(),
+      zoom: orbitZoom,
+      bearing: orbitBearing,
+      pitch: pitchForZoom(orbitZoom),
+      duration: 1500,
+      essential: true,
+    })
+  } else {
+    // 전체 캠퍼스 시점으로 복귀: 기본 제스처 다시 켜기
+    setDefaultGestures(true)
+    map.flyTo({ ...OVERVIEW_VIEW, duration: 1500, essential: true })
+  }
+}
+
+// ─────────────────────────────────────────────
+// 마커 시점 전용 제스처
+//  · 한 손가락 스와이프 → 마커를 중심으로 카메라 궤도 회전(원운동)
+//  · 두 손가락 핀치 → 확대/축소(줌+각도가 함께 변해 곡선 궤도로 다가감)
+// ─────────────────────────────────────────────
+const gestureTarget = map.getCanvasContainer()
+let oneFingerActive = false
+let lastTouchX = 0
+let pinchStartDist = 0
+let pinchStartZoom = 0
+let gestureMoved = false // 스와이프/핀치였으면 뒤따르는 click(더블탭)을 무시
+
+function touchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX
+  const dy = touches[0].clientY - touches[1].clientY
+  return Math.hypot(dx, dy)
+}
+
+gestureTarget.addEventListener(
+  'touchstart',
+  (e) => {
+    if (!isFollowing || isTransitioning) return
+    if (e.touches.length === 1) {
+      oneFingerActive = true
+      gestureMoved = false
+      lastTouchX = e.touches[0].clientX
+    } else if (e.touches.length === 2) {
+      oneFingerActive = false
+      pinchStartDist = touchDistance(e.touches)
+      pinchStartZoom = orbitZoom
+      gestureMoved = true // 핀치는 탭이 아님
+    }
+  },
+  { passive: false }
+)
+
+gestureTarget.addEventListener(
+  'touchmove',
+  (e) => {
+    if (!isFollowing || isTransitioning) return
+    if (e.touches.length === 1 && oneFingerActive) {
+      const x = e.touches[0].clientX
+      const dx = x - lastTouchX
+      lastTouchX = x
+      // 손가락을 오른쪽으로 밀면 시계 방향으로 회전 (필요하면 부호만 뒤집으면 됨)
+      orbitBearing -= dx * ORBIT_ROT_SPEED
+      if (Math.abs(dx) > 1) gestureMoved = true
+      applyOrbit()
+      e.preventDefault()
+    } else if (e.touches.length === 2) {
+      // 두 손가락 간격 비율 → 줌 변화(핀치 아웃=확대). 줌에 따라 각도도 함께 바뀜.
+      const ratio = touchDistance(e.touches) / pinchStartDist
+      orbitZoom = clamp(
+        pinchStartZoom + Math.log2(ratio) * PINCH_SENSITIVITY,
+        FOLLOW_MIN_ZOOM,
+        FOLLOW_MAX_ZOOM
+      )
+      applyOrbit()
+      e.preventDefault()
+    }
+  },
+  { passive: false }
+)
+
+gestureTarget.addEventListener(
+  'touchend',
+  (e) => {
+    if (e.touches.length === 0) oneFingerActive = false
+  },
+  { passive: false }
+)
+
+// ─────────────────────────────────────────────
+// 더블탭 감지 (직접 구현)
+// maplibre의 기본 dblclick 이벤트는 모바일 터치에서 불안정하므로,
+// click(탭/클릭 모두 발생) 사이 간격을 재서 직접 더블탭을 판정한다.
+// ─────────────────────────────────────────────
+const DOUBLE_TAP_MS = 400 // 두 탭 사이 최대 간격
+const DOUBLE_TAP_DIST = 40 // 두 탭 사이 최대 픽셀 거리 (손가락 흔들림 허용)
+let lastTapTime = 0
+let lastTapPoint = null
+
+map.on('click', (e) => {
+  // 방금 스와이프/핀치였다면 그 뒤의 click은 무시 (실수 토글 방지)
+  if (gestureMoved) {
+    gestureMoved = false
+    return
+  }
+  const now = Date.now()
+  const dt = now - lastTapTime
+  const dist = lastTapPoint
+    ? Math.hypot(e.point.x - lastTapPoint.x, e.point.y - lastTapPoint.y)
+    : Infinity
+
+  if (dt < DOUBLE_TAP_MS && dist < DOUBLE_TAP_DIST) {
+    // 더블탭 성립
+    lastTapTime = 0
+    lastTapPoint = null
+    toggleView()
+  } else {
+    // 첫 번째 탭 기록
+    lastTapTime = now
+    lastTapPoint = e.point
+  }
+})
+
+// ─────────────────────────────────────────────
+// 카메라 버튼 → 사진 촬영 → 촬영 위치에 사진 마커 + 내 고양이에 저장
+// ─────────────────────────────────────────────
+const cameraBtn = document.querySelector('#camera-btn')
+const cameraInput = document.querySelector('#camera-input')
+const photoView = document.querySelector('#photo-view')
+const photoPreview = document.querySelector('#photo-preview')
+const photoClose = document.querySelector('#photo-close')
+const catGalleryBtn = document.querySelector('#cat-gallery-btn')
+const catGallery = document.querySelector('#cat-gallery')
+const galleryClose = document.querySelector('#gallery-close')
+const galleryEmpty = document.querySelector('#gallery-empty')
+const galleryGrid = document.querySelector('#gallery-grid')
+const locationPhotos = document.querySelector('#location-photos')
+const locationPhotosBackdrop = document.querySelector('#location-photos-backdrop')
+const locationPhotosClose = document.querySelector('#location-photos-close')
+const locationPhotoCount = document.querySelector('#location-photo-count')
+const locationPhotoStrip = document.querySelector('#location-photo-strip')
+
+const PHOTO_DB_NAME = 'kaist-cat-photos'
+const PHOTO_STORE_NAME = 'photos'
+const PHOTO_GROUP_RADIUS_METERS = 35
+let catPhotos = []
+const photoMarkerGroups = new Map()
+const newestPhotoFirst = (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+
+// 큰 사진을 그대로 저장하면 휴대폰 저장 공간을 빠르게 차지하므로
+// 긴 변을 1600px로 줄인 JPEG로 보관한다.
+function imageFileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const image = new Image()
+
+    image.onload = () => {
+      const maxSide = 1600
+      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(image.naturalWidth * scale)
+      canvas.height = Math.round(image.naturalHeight * scale)
+      const context = canvas.getContext('2d')
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(objectUrl)
+      resolve(canvas.toDataURL('image/jpeg', 0.86))
+    }
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('사진을 읽지 못했습니다.'))
+    }
+    image.src = objectUrl
+  })
+}
+
+function originalFileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error ?? new Error('사진 원본을 읽지 못했습니다.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function openPhotoDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) {
+      reject(new Error('이 브라우저는 사진 저장소를 지원하지 않습니다.'))
+      return
+    }
+
+    const request = indexedDB.open(PHOTO_DB_NAME, 1)
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(PHOTO_STORE_NAME)) {
+        request.result.createObjectStore(PHOTO_STORE_NAME, { keyPath: 'id' })
+      }
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function readStoredPhotos() {
+  const database = await openPhotoDatabase()
+  return new Promise((resolve, reject) => {
+    const request = database
+      .transaction(PHOTO_STORE_NAME, 'readonly')
+      .objectStore(PHOTO_STORE_NAME)
+      .getAll()
+    request.onsuccess = () => {
+      database.close()
+      resolve(request.result)
+    }
+    request.onerror = () => {
+      database.close()
+      reject(request.error)
+    }
+  })
+}
+
+async function storePhoto(photo) {
+  const database = await openPhotoDatabase()
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(PHOTO_STORE_NAME, 'readwrite')
+    transaction.objectStore(PHOTO_STORE_NAME).put(photo)
+    transaction.oncomplete = () => {
+      database.close()
+      resolve()
+    }
+    transaction.onerror = () => {
+      database.close()
+      reject(transaction.error)
+    }
+  })
+}
+
+function showPhoto(dataUrl) {
+  photoPreview.src = dataUrl
+  photoView.hidden = false
+}
+
+function returnToMap() {
+  photoView.hidden = true
+  catGallery.hidden = true
+  locationPhotos.hidden = true
+  photoPreview.removeAttribute('src')
+}
+
+function showLocationPhotos(photos) {
+  const sortedPhotos = [...photos].sort(newestPhotoFirst)
+  locationPhotoStrip.replaceChildren()
+  locationPhotoCount.textContent = `${sortedPhotos.length}장`
+
+  sortedPhotos.forEach((photo, index) => {
+    const card = document.createElement('button')
+    card.className = 'location-photo-card'
+    card.type = 'button'
+    card.setAttribute('aria-label', `${photoDateLabel(photo.createdAt)}에 찍은 사진 크게 보기`)
+
+    const image = document.createElement('img')
+    image.src = photo.dataUrl
+    image.alt = '이 위치에서 촬영한 고양이'
+    const date = document.createElement('time')
+    date.dateTime = photo.createdAt
+    date.textContent = photoDateLabel(photo.createdAt)
+    card.append(image, date)
+    card.addEventListener('click', () => showPhoto(photo.dataUrl))
+    locationPhotoStrip.append(card)
+  })
+
+  locationPhotos.hidden = false
+
+  // 모든 카드가 화면 아래 중앙의 한 카드 덱에서 한 장씩 나와 제자리로 가도록 연출한다.
+  requestAnimationFrame(() => {
+    const stripRect = locationPhotoStrip.getBoundingClientRect()
+    const deckCenterX = stripRect.left + stripRect.width / 2
+    const deckCenterY = stripRect.bottom - 18
+    const cards = locationPhotoStrip.querySelectorAll('.location-photo-card')
+
+    cards.forEach((card, index) => {
+      const cardRect = card.getBoundingClientRect()
+      const cardCenterX = cardRect.left + cardRect.width / 2
+      const cardCenterY = cardRect.top + cardRect.height / 2
+      card.style.setProperty('--deck-x', `${deckCenterX - cardCenterX}px`)
+      card.style.setProperty('--deck-y', `${deckCenterY - cardCenterY}px`)
+      card.style.setProperty('--deal-rotate', `${index % 2 === 0 ? -9 : 9}deg`)
+      card.style.animationDelay = `${Math.min(index * 115, 920)}ms`
+      card.style.zIndex = `${cards.length - index}`
+      card.classList.add('is-dealt')
+    })
+  })
+}
+
+function nearestPhotoMarkerGroup(position) {
+  let nearestGroup = null
+  let nearestDistance = Infinity
+
+  for (const group of photoMarkerGroups.values()) {
+    const distance = distanceInMeters(position, group.position)
+    if (distance <= PHOTO_GROUP_RADIUS_METERS && distance < nearestDistance) {
+      nearestGroup = group
+      nearestDistance = distance
+    }
+  }
+  return nearestGroup
+}
+
+function addPhotoMarker(photo, animate = true) {
+  const existingGroup = nearestPhotoMarkerGroup(photo.position)
+
+  if (existingGroup) {
+    existingGroup.photos.push(photo)
+    existingGroup.photos.sort(newestPhotoFirst)
+    existingGroup.count = existingGroup.photos.length
+    existingGroup.badge.textContent = existingGroup.count
+    existingGroup.badge.hidden = false
+    existingGroup.element.setAttribute(
+      'aria-label',
+      `이 위치에서 찍은 고양이 사진 ${existingGroup.count}장 보기`
+    )
+
+    // 해당 좌표에서 가장 최근에 찍은 사진을 항상 대표 이미지로 사용한다.
+    if (new Date(photo.createdAt) > new Date(existingGroup.representativeCreatedAt)) {
+      existingGroup.dataUrl = photo.dataUrl
+      existingGroup.image.src = photo.dataUrl
+      existingGroup.representativeCreatedAt = photo.createdAt
+    }
+    return
+  }
+
+  const element = document.createElement('button')
+  element.className = 'photo-marker'
+  element.type = 'button'
+  element.setAttribute('aria-label', '이 위치에서 찍은 고양이 사진 1장 보기')
+
+  const bubble = document.createElement('span')
+  bubble.className = 'photo-marker-bubble'
+  if (!animate) bubble.classList.add('is-restored')
+
+  const image = document.createElement('img')
+  image.src = photo.dataUrl
+  image.alt = ''
+  const badge = document.createElement('span')
+  badge.className = 'photo-marker-count'
+  badge.hidden = true
+  badge.textContent = '1'
+  bubble.append(image, badge)
+  element.append(bubble)
+
+  const group = {
+    count: 1,
+    dataUrl: photo.dataUrl,
+    representativeCreatedAt: photo.createdAt,
+    photos: [photo],
+    position: photo.position,
+    element,
+    image,
+    badge,
+  }
+  photoMarkerGroups.set(photo.id, group)
+
+  element.addEventListener('click', (event) => {
+    event.stopPropagation()
+    showLocationPhotos(group.photos)
+  })
+
+  new maplibregl.Marker({
+    element,
+    anchor: 'bottom',
+    pitchAlignment: 'viewport',
+    rotationAlignment: 'viewport',
+    subpixelPositioning: true,
+  })
+    .setLngLat(photo.position)
+    .addTo(map)
+}
+
+function distanceInMeters(from, to) {
+  const radians = (degrees) => (degrees * Math.PI) / 180
+  const earthRadius = 6371000
+  const lat1 = radians(from[1])
+  const lat2 = radians(to[1])
+  const deltaLat = lat2 - lat1
+  const deltaLng = radians(to[0] - from[0])
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2
+  return 2 * earthRadius * Math.asin(Math.sqrt(a))
+}
+
+// 실내 GPS는 같은 자리에서도 좌표가 계속 흔들릴 수 있다.
+// 촬영 시간과 관계없이 기존 사진 중 GPS 오차 범위 안의 가장 가까운 위치에 맞춘다.
+function stablePhotoPosition() {
+  const current = [...markerLngLat()]
+  const samePlaceRadius = clamp(userPosAccuracy * 1.5, 20, 60)
+  let nearestPhoto = null
+  let nearestDistance = Infinity
+
+  for (const photo of catPhotos) {
+    const distance = distanceInMeters(current, photo.position)
+    if (distance <= samePlaceRadius && distance < nearestDistance) {
+      nearestPhoto = photo
+      nearestDistance = distance
+    }
+  }
+  return nearestPhoto ? [...nearestPhoto.position] : current
+}
+
+function photoDateLabel(isoDate) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(isoDate))
+}
+
+function renderGallery() {
+  galleryGrid.replaceChildren()
+  galleryEmpty.hidden = catPhotos.length > 0
+
+  for (const photo of catPhotos) {
+    const card = document.createElement('button')
+    card.className = 'gallery-card'
+    card.type = 'button'
+    card.setAttribute('aria-label', `${photoDateLabel(photo.createdAt)}에 찍은 고양이 사진`)
+
+    const image = document.createElement('img')
+    image.src = photo.dataUrl
+    image.alt = '촬영한 고양이'
+    const date = document.createElement('time')
+    date.dateTime = photo.createdAt
+    date.textContent = photoDateLabel(photo.createdAt)
+    card.append(image, date)
+    card.addEventListener('click', () => showPhoto(photo.dataUrl))
+    galleryGrid.append(card)
+  }
+}
+
+async function restorePhotos() {
+  try {
+    const storedPhotos = await readStoredPhotos()
+    catPhotos = storedPhotos
+      .filter((photo) => Array.isArray(photo.position) && photo.dataUrl)
+      .sort(newestPhotoFirst)
+    catPhotos.forEach((photo) => addPhotoMarker(photo, false))
+    renderGallery()
+  } catch (error) {
+    console.warn('저장한 고양이 사진을 불러오지 못했습니다.', error)
+  }
+}
+
+// 버튼을 누르면 다른 화면을 모두 닫고 폰 기본 카메라(또는 사진 선택)를 연다.
+cameraBtn.addEventListener('click', () => {
+  returnToMap()
+  cameraInput.click()
+})
+
+// 사진을 찍거나 고르면 현재 위치와 함께 지도 및 내 고양이에 저장
+cameraInput.addEventListener('change', async () => {
+  const file = cameraInput.files?.[0]
+  if (!file) return
+  // 카메라의 '확인/사진 사용' 직후 가장 먼저 지도 화면을 복구한다.
+  returnToMap()
+
+  try {
+    // 시작 직후 촬영해도 기존 사진 복원 작업이 새 사진을 덮어쓰지 않게 기다린다.
+    await photoRestorePromise
+    let dataUrl
+    try {
+      dataUrl = await imageFileToDataUrl(file)
+    } catch (compressionError) {
+      console.warn('사진 압축에 실패해 원본을 저장합니다.', compressionError)
+      dataUrl = await originalFileToDataUrl(file)
+    }
+    const photo = {
+      id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+      dataUrl,
+      position: stablePhotoPosition(),
+      createdAt: new Date().toISOString(),
+    }
+
+    catPhotos.unshift(photo)
+    addPhotoMarker(photo)
+    renderGallery()
+    returnToMap()
+
+    try {
+      await storePhoto(photo)
+    } catch (error) {
+      console.warn('고양이 사진을 브라우저에 저장하지 못했습니다.', error)
+    }
+  } catch (error) {
+    console.warn('사진 처리에 실패했습니다.', error)
+  } finally {
+    cameraInput.value = '' // 연속 촬영과 같은 사진 재선택을 허용
+  }
+})
+
+function closePhoto() {
+  photoView.hidden = true
+  photoPreview.removeAttribute('src')
+  cameraInput.value = '' // 같은 사진도 다시 선택 가능하게 초기화
+}
+
+photoClose.addEventListener('click', closePhoto)
+catGalleryBtn.addEventListener('click', () => {
+  renderGallery()
+  catGallery.hidden = false
+})
+galleryClose.addEventListener('click', () => {
+  catGallery.hidden = true
+})
+locationPhotosBackdrop.addEventListener('click', () => {
+  locationPhotos.hidden = true
+})
+locationPhotosClose.addEventListener('click', () => {
+  locationPhotos.hidden = true
+})
+
+const photoRestorePromise = restorePhotos()
+
+// 안내 문구는 5초 후 사라짐
+setTimeout(() => {
+  document.querySelector('#hint').style.opacity = '0'
+}, 5000)
