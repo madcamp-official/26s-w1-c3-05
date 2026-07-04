@@ -1,4 +1,5 @@
-import type { CampusZoneRow, CatIdentificationCandidateRow, CatPhotoRow, CatPlacementRow, CatRow, CatSightingRow, GalleryPhotoRow, UserCatCollectionRow, UserRow } from '../db/types.js'
+import type { CampusZoneRow, CatIdentificationCandidateRow, CatPlacementRow, CatRow, CatSightingRow, GalleryPhotoRow, UserCatCollectionRow, UserRow } from '../db/types.js'
+import { modelAsset, resolveModelKey } from './catModels.js'
 
 export const publicUser = (user: UserRow) => ({
   id: String(user.id),
@@ -36,6 +37,8 @@ export const catDetail = (cat: CatRow, collection?: UserCatCollectionRow) => {
 export const collectionCat = (row: UserCatCollectionRow & Partial<CatRow>) => ({
   catId: String(row.cat_id),
   name: row.name ?? null,
+  customName: row.custom_name ?? null,
+  displayName: row.custom_name ?? row.name ?? null,
   mainImageUrl: row.representative_photo_url ?? null,
   pattern: row.pattern ?? null,
   discoveredAt: row.first_discovered_at,
@@ -72,26 +75,38 @@ export const catSighting = (row: CatSightingRow) => ({
   createdAt: row.created_at,
 })
 
-export const mapCat = (placement: CatPlacementRow, isDiscovered: boolean) => ({
-  catId: String(placement.cat_id),
-  displayType: isDiscovered ? 'discovered_cat' : 'undiscovered_recent',
-  name: isDiscovered ? placement.name : null,
-  lat: placement.latitude,
-  lng: placement.longitude,
-  modelType: isDiscovered ? 'cat' : 'bush',
-  markerLabel: isDiscovered ? placement.name ?? '고양이' : '???',
-  mainImageUrl: isDiscovered ? placement.representative_photo_url ?? null : null,
-})
+export const mapCat = (placement: CatPlacementRow, isDiscovered: boolean) => {
+  const modelKey = resolveModelKey({ model_key: placement.model_key, pattern: placement.pattern })
+  const asset = modelAsset(modelKey)
+  return {
+    catId: String(placement.cat_id),
+    displayType: isDiscovered ? 'discovered_cat' : 'undiscovered_recent',
+    name: isDiscovered ? placement.name : null,
+    lat: placement.latitude,
+    lng: placement.longitude,
+    // Undiscovered cats are hidden as a bush; discovered cats show their coat model.
+    modelType: isDiscovered ? 'cat' : 'bush',
+    modelKey: isDiscovered ? modelKey : 'bush',
+    modelUrl: isDiscovered ? asset.assetUrl : null,
+    modelScale: isDiscovered ? asset.scale : null,
+    markerLabel: isDiscovered ? placement.name ?? '고양이' : '???',
+    mainImageUrl: isDiscovered ? placement.representative_photo_url ?? null : null,
+  }
+}
 
 export const candidate = (row: CatIdentificationCandidateRow) => ({
   catId: String(row.cat_id),
   name: row.name,
+  mainImageUrl: row.representative_photo_url,
   representativePhotoUrl: row.representative_photo_url,
   pattern: row.pattern,
-  lastSeenLocation: null,
   imageSimilarityScore: row.image_similarity_score,
   locationScore: row.location_score,
+  recentSeenScore: row.recent_seen_score,
+  patternScore: row.pattern_score,
+  distanceMeters: row.distance_meters,
   finalScore: row.final_score,
+  lastSeenAt: row.last_seen_at ?? null,
 })
 
 export const adminCat = (cat: CatRow) => ({
@@ -104,6 +119,7 @@ export const adminCat = (cat: CatRow) => ({
   defaultLatitude: cat.default_latitude,
   defaultLongitude: cat.default_longitude,
   status: cat.status,
+  modelKey: cat.model_key,
 })
 
 export const zone = (row: CampusZoneRow) => ({
@@ -117,10 +133,14 @@ export const zone = (row: CampusZoneRow) => ({
   description: row.description,
 })
 
-export const uploadedCandidate = (photo: CatPhotoRow) => ({
-  sightingId: String(photo.id),
-  imageUrl: photo.image_url,
-  latitude: photo.latitude,
-  longitude: photo.longitude,
-  createdAt: photo.created_at,
+export const uploadedCandidate = (cat: CatRow) => ({
+  catId: String(cat.id),
+  name: cat.name,
+  imageUrl: cat.representative_photo_url,
+  latitude: cat.default_latitude,
+  longitude: cat.default_longitude,
+  firstSeenAt: cat.first_seen_at,
+  lastSeenAt: cat.last_seen_at,
+  createdAt: cat.created_at,
+  status: cat.status,
 })

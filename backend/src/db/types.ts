@@ -33,7 +33,8 @@ export interface CatRow {
   default_latitude: number | null
   default_longitude: number | null
   default_zone_id: number | null
-  status: 'active' | 'hidden' | 'inactive'
+  status: 'active' | 'candidate' | 'merged' | 'hidden' | 'inactive'
+  model_key: string | null
   created_at: string
   updated_at: string
 }
@@ -54,6 +55,27 @@ export interface CatPhotoRow {
   is_gallery_visible: number
   is_representative: number
   identification_status: DetectionStatus
+  crop_image_url: string | null
+  detection_bbox_json: DetectionBbox | null
+  quality_score: number | null
+  created_at: string
+}
+
+export interface DetectionBbox {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+export interface CatPhotoEmbeddingRow {
+  id: number
+  photo_id: number
+  cat_id: number | null
+  model_name: string
+  embedding: number[]
+  crop_image_url: string | null
+  quality_score: number | null
   created_at: string
 }
 
@@ -83,6 +105,7 @@ export interface CatPlacementRow {
   name?: string | null
   representative_photo_url?: string | null
   pattern?: string | null
+  model_key?: string | null
 }
 
 export interface UserCatCollectionRow {
@@ -94,6 +117,7 @@ export interface UserCatCollectionRow {
   discovery_photo_id: number | null
   representative_photo_id: number | null
   is_favorite: number
+  custom_name: string | null
   created_at: string
 }
 
@@ -103,12 +127,16 @@ export interface CatIdentificationCandidateRow {
   cat_id: number
   image_similarity_score: number
   location_score: number | null
+  recent_seen_score: number | null
+  pattern_score: number | null
+  distance_meters: number | null
   final_score: number
   rank_order: number
   created_at: string
   name?: string | null
   representative_photo_url?: string | null
   pattern?: string | null
+  last_seen_at?: string | null
 }
 
 export interface CampusZoneRow {
@@ -128,4 +156,12 @@ export interface GalleryPhotoRow extends CatPhotoRow {
   cat_name: string | null
 }
 
-export type DetectionStatus = 'pending' | 'matched' | 'needs_user_confirmation' | 'new_cat_candidate' | 'rejected'
+export type DetectionStatus =
+  | 'pending'
+  | 'matched'
+  | 'needs_user_confirmation'
+  | 'new_cat_candidate'
+  | 'rejected'
+  | 'low_quality'
+  | 'admin_review'
+  | 'failed'
