@@ -61,8 +61,13 @@ kaist-map/
 ├── index.html                    # 페이지 뼈대
 ├── src/
 │   ├── main.js                   # 지도 로직 (중심 좌표, 컨트롤 등)
+│   ├── model-layer.js            # GLB 로딩·애니메이션·3D 렌더링
 │   └── style.css                 # 전체 화면 스타일
 ├── public/
+│   ├── models/
+│   │   ├── avatar.glb            # 내 위치에 표시할 아바타
+│   │   └── cat.glb               # 사진 위치에 표시할 고양이
+│   ├── textures/                 # 잔디·꽃밭·물 텍스처
 │   └── monument-style.json       # 지도 색·도로 스타일 (핵심 디자인 파일)
 ├── scripts/
 │   └── make_monument_style.py    # 위 스타일 JSON을 생성하는 스크립트
