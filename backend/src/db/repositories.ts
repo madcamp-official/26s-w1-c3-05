@@ -63,6 +63,33 @@ export const updateUserProfile = async (userId: number, input: { nickname?: stri
 export const findActiveCats = () => many<CatRow>("SELECT * FROM cats WHERE status = 'active' ORDER BY COALESCE(last_seen_at, created_at) DESC")
 export const findCatById = (catId: number) => one<CatRow>('SELECT * FROM cats WHERE id = $1', [catId])
 
+export const findCatReferencePhotoUrls = (catIds: number[], limitPerCat = 5) => {
+  if (catIds.length === 0) {
+    return Promise.resolve([])
+  }
+
+  return many<{ cat_id: number; image_url: string }>(
+    `SELECT cat_id, image_url
+     FROM (
+       SELECT
+         cat_id,
+         image_url,
+         ROW_NUMBER() OVER (
+           PARTITION BY cat_id
+           ORDER BY is_representative DESC, cat_identification_confidence DESC NULLS LAST, taken_at DESC
+         ) AS row_number
+       FROM cat_photos
+       WHERE cat_id = ANY($1::bigint[])
+         AND is_cat = TRUE
+         AND identification_status = 'matched'
+         AND is_gallery_visible = TRUE
+     ) ranked
+     WHERE row_number <= $2
+     ORDER BY cat_id, row_number`,
+    [catIds, limitPerCat],
+  )
+}
+
 export const createCat = async (input: {
   name?: string | null
   description?: string | null

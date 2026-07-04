@@ -48,7 +48,7 @@ The first run downloads the YOLO and MobileNet weights automatically.
 
 ## Identification
 
-`POST /cat-identification` compares the uploaded image against each candidate cat's representative images.
+`POST /cat-identification` compares the uploaded image against each candidate cat's reference images.
 
 Request:
 
@@ -78,3 +78,4 @@ Response:
 ```
 
 The service crops the largest detected cat with YOLO and compares MobileNet image embeddings using cosine similarity.
+When a candidate has multiple reference images, the response uses the best similarity score.

@@ -73,3 +73,4 @@ Rules:
 - `catId` must match one of the requested candidates.
 - `imageSimilarityScore` must be a number between `0` and `1`.
 - The backend combines image similarity with location score before deciding `matched`, `needs_user_confirmation`, or `new_cat_candidate`.
+- The backend may send multiple `imageUrls` for one cat. The service should return the best score among those reference images.

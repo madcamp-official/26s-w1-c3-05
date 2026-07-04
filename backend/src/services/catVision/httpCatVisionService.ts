@@ -1,4 +1,4 @@
-import { findActiveCats } from '../../db/repositories.js'
+import { findActiveCats, findCatReferencePhotoUrls } from '../../db/repositories.js'
 import { locationScore } from '../../lib/geo.js'
 import { MockCatVisionService } from './mockCatVisionService.js'
 import type { CatDetectionResult, CatVisionCandidate, CatVisionInput, CatVisionResult, CatVisionService } from './types.js'
@@ -85,7 +85,9 @@ export class HttpCatVisionService implements CatVisionService {
 
   private async identifyCat(input: CatVisionInput, catDetectionConfidence: number): Promise<CatVisionResult> {
     const cats = await findActiveCats()
-    const candidateCats = cats.filter((cat) => cat.representative_photo_url)
+    const referencePhotos = await findCatReferencePhotoUrls(cats.map((cat) => cat.id))
+    const referenceUrlsByCatId = this.buildReferenceUrlsByCatId(cats, referencePhotos)
+    const candidateCats = cats.filter((cat) => (referenceUrlsByCatId.get(cat.id)?.length ?? 0) > 0)
 
     if (candidateCats.length === 0) {
       return {
@@ -107,7 +109,7 @@ export class HttpCatVisionService implements CatVisionService {
         imageUrl: this.resolveImageUrl(input.imageUrl),
         candidates: candidateCats.map((cat) => ({
           catId: cat.id,
-          imageUrls: [this.resolveImageUrl(cat.representative_photo_url!)],
+          imageUrls: referenceUrlsByCatId.get(cat.id)!.map((imageUrl) => this.resolveImageUrl(imageUrl)),
         })),
       }),
     })
@@ -165,6 +167,26 @@ export class HttpCatVisionService implements CatVisionService {
       candidates: candidates.slice(0, 3),
       bestScore: best.finalScore,
     }
+  }
+
+  private buildReferenceUrlsByCatId(cats: CatVisionCandidate['cat'][], referencePhotos: { cat_id: number; image_url: string }[]) {
+    const urlsByCatId = new Map<number, string[]>()
+
+    for (const cat of cats) {
+      if (cat.representative_photo_url) {
+        urlsByCatId.set(cat.id, [cat.representative_photo_url])
+      }
+    }
+
+    for (const photo of referencePhotos) {
+      const urls = urlsByCatId.get(photo.cat_id) ?? []
+      if (!urls.includes(photo.image_url)) {
+        urls.push(photo.image_url)
+      }
+      urlsByCatId.set(photo.cat_id, urls)
+    }
+
+    return urlsByCatId
   }
 
   private toCandidate(item: IdentificationCandidateResponse, catById: Map<number, CatVisionCandidate['cat']>, input: CatVisionInput): CatVisionCandidate | null {
