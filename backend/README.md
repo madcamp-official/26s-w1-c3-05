@@ -160,3 +160,32 @@ VISION_PROVIDER="http"
 VISION_SERVICE_URL="http://localhost:8001"
 PUBLIC_BASE_URL="http://host.docker.internal:4000"
 ```
+
+## Reference Cat Photos
+
+To import local reference photos into PostgreSQL:
+
+```bash
+npm run import:cat-references
+```
+
+By default, the importer looks for `../assets/model_data` and the sibling project path `../../week1/assets/model_data`.
+You can override it:
+
+```bash
+$env:MODEL_DATA_DIR="C:\Users\user\2026-project\kaist_madcamp\week1\assets\model_data"
+npm run import:cat-references
+```
+
+Expected folder shape:
+
+```text
+model_data/
+  cat01/
+    1.jpg
+    2.jpg
+  cat02/
+    1.jpg
+```
+
+The importer copies images into `backend/uploads/reference-cats`, creates missing `cats`, inserts matched `cat_photos`, and sets each cat's representative image.
