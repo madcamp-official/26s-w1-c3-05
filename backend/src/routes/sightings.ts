@@ -7,7 +7,6 @@ import {
   createCandidate,
   createPhoto,
   createSighting,
-  findActiveCats,
   findCandidatesByPhoto,
   findCatById,
   findPhotoById,
@@ -17,9 +16,10 @@ import {
   upsertCollection,
 } from '../db/repositories.js'
 import { getCurrentUser, requireAuth, type AuthRequest } from '../lib/auth.js'
-import { findZoneId, locationScore } from '../lib/geo.js'
+import { findZoneId } from '../lib/geo.js'
 import { HttpError } from '../lib/httpError.js'
 import { candidate, sighting } from '../lib/serializers.js'
+import { catVisionService } from '../services/catVision/index.js'
 
 export const sightingsRouter = Router()
 
@@ -53,11 +53,18 @@ sightingsRouter.post('/sightings', requireAuth, upload.single('image'), async (r
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : body.imageUrl
     if (!imageUrl) throw new HttpError(400, 'image 파일이 필요합니다.', 'VALIDATION_ERROR')
 
-    const isCat = body.isCat ?? true
     const zoneId = await findZoneId(body.latitude, body.longitude)
     const takenAt = nowIso()
+    const visionResult = await catVisionService.analyze({
+      imageUrl,
+      latitude: body.latitude,
+      longitude: body.longitude,
+      requestedCatId: body.catId,
+      isCatOverride: body.isCat,
+      forceConfirmation: body.forceConfirmation,
+    })
 
-    if (!isCat) {
+    if (!visionResult.isCat) {
       const photo = await createPhoto({
         userId: user.id,
         imageUrl,
@@ -66,50 +73,47 @@ sightingsRouter.post('/sightings', requireAuth, upload.single('image'), async (r
         zoneId,
         takenAt,
         isCat: false,
-        catDetectionConfidence: 0.05,
+        catDetectionConfidence: visionResult.catDetectionConfidence,
         isGalleryVisible: false,
         identificationStatus: 'rejected',
       })
       return res.status(201).json({ sightingId: String(photo.id), detectionStatus: 'rejected', cat: null, message: '고양이가 인식되지 않았습니다.' })
     }
 
-    const match = await pickMockMatch(body.catId, body.latitude, body.longitude)
-    const needsConfirmation = body.forceConfirmation || match.status === 'needs_user_confirmation'
-    const status = needsConfirmation ? 'needs_user_confirmation' : match.status
     const photo = await createPhoto({
       userId: user.id,
-      catId: status === 'matched' ? match.cat?.id ?? null : null,
+      catId: visionResult.status === 'matched' ? visionResult.matchedCat?.id ?? null : null,
       imageUrl,
       latitude: body.latitude,
       longitude: body.longitude,
       zoneId,
       takenAt,
       isCat: true,
-      catDetectionConfidence: 0.94,
-      catIdentificationConfidence: status === 'matched' ? match.bestScore : null,
-      identificationStatus: status,
+      catDetectionConfidence: visionResult.catDetectionConfidence,
+      catIdentificationConfidence: visionResult.status === 'matched' ? visionResult.bestScore : null,
+      identificationStatus: visionResult.status,
     })
 
-    match.candidates.forEach((item, index) => {
+    visionResult.candidates.forEach((item, index) => {
       void createCandidate({
         photoId: photo.id,
         catId: item.cat.id,
-        imageSimilarityScore: item.imageScore,
-        locationScore: item.locationScoreValue,
+        imageSimilarityScore: item.imageSimilarityScore,
+        locationScore: item.locationScore,
         finalScore: item.finalScore,
         rankOrder: index + 1,
       })
     })
 
-    if (status === 'new_cat_candidate') {
+    if (visionResult.status === 'new_cat_candidate') {
       return res.status(201).json({ sightingId: String(photo.id), detectionStatus: 'new_cat_candidate', cat: null, message: '새로운 고양이 후보로 등록되었습니다.' })
     }
 
-    if (status === 'needs_user_confirmation') {
+    if (visionResult.status === 'needs_user_confirmation') {
       return res.status(201).json({ detectionStatus: 'needs_user_confirmation', photoId: String(photo.id), candidates: (await findCandidatesByPhoto(photo.id)).map(candidate) })
     }
 
-    const cat = match.cat!
+    const cat = visionResult.matchedCat!
     const createdSighting = await createSighting({ catId: cat.id, userId: user.id, photoId: photo.id, latitude: body.latitude, longitude: body.longitude, zoneId, seenAt: takenAt })
     const { isNew } = await upsertCollection({ userId: user.id, catId: cat.id, photoId: photo.id, seenAt: takenAt })
     res.status(201).json({
@@ -157,23 +161,3 @@ sightingsRouter.post('/sightings/:photoId/confirm-cat', requireAuth, async (req:
     next(error)
   }
 })
-
-const pickMockMatch = async (requestedCatId: number | undefined, latitude: number, longitude: number) => {
-  const cats = await findActiveCats()
-  if (cats.length === 0) return { status: 'new_cat_candidate' as const, cat: null, candidates: [], bestScore: 0 }
-
-  const scored = cats.map((cat, index) => {
-    const imageScore = requestedCatId === cat.id ? 0.96 : Math.max(0.62, 0.9 - index * 0.08)
-    const distance = cat.default_latitude == null || cat.default_longitude == null ? null : Math.hypot((Number(cat.default_latitude) - latitude) * 111000, (Number(cat.default_longitude) - longitude) * 88800)
-    const locationScoreValue = locationScore(distance)
-    return { cat, imageScore, locationScoreValue, finalScore: Number((imageScore * 0.75 + locationScoreValue * 0.25).toFixed(4)) }
-  }).sort((a, b) => b.finalScore - a.finalScore)
-
-  const best = scored[0]
-  const second = scored[1]
-  if (!best || best.imageScore < 0.6) return { status: 'new_cat_candidate' as const, cat: null, candidates: [], bestScore: 0 }
-  if (best.finalScore >= 0.8 && (!second || best.finalScore - second.finalScore >= 0.07)) {
-    return { status: 'matched' as const, cat: best.cat, candidates: scored.slice(0, 3), bestScore: best.finalScore }
-  }
-  return { status: 'needs_user_confirmation' as const, cat: null, candidates: scored.slice(0, 3), bestScore: best.finalScore }
-}
