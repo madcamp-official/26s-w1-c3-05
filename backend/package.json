@@ -9,6 +9,7 @@
     "start": "node dist/src/server.js",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
+    "vision:mock": "node tools/mock-vision-server.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

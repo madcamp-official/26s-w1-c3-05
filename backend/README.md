@@ -123,3 +123,26 @@ Admin:
 - `longitude`: number
 
 For local API testing, it also accepts JSON with `imageUrl`, `latitude`, and `longitude`.
+
+## Cat Vision
+
+The default vision provider is `mock`, so the backend can run without a machine-learning server:
+
+```env
+VISION_PROVIDER="mock"
+```
+
+To test the HTTP integration boundary:
+
+```bash
+npm run vision:mock
+```
+
+Then set:
+
+```env
+VISION_PROVIDER="http"
+VISION_SERVICE_URL="http://localhost:8001"
+```
+
+The HTTP contract is documented in `vision-service.md`. For the MVP, the HTTP service handles cat/non-cat detection and the backend still uses the mock identity matcher for existing-cat candidate scoring.

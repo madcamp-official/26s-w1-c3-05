@@ -9,6 +9,11 @@ export interface CatVisionInput {
   forceConfirmation?: boolean
 }
 
+export interface CatDetectionResult {
+  isCat: boolean
+  confidence: number
+}
+
 export interface CatVisionCandidate {
   cat: CatRow
   imageSimilarityScore: number
