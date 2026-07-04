@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Environment
+.env
+.env.*.local
+
+# Runtime artifacts
+*.log
+uploads/
+data/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

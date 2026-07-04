@@ -1,0 +1,125 @@
+# Myocatmongo Backend
+
+Backend API for Myocatmongo. It follows the current MVP spec: auth, personal collection, cat sightings, gallery, map cats, profile, rankings, and admin APIs.
+
+## Setup
+
+```bash
+cd backend
+cp .env.example .env
+npm install
+npm run db:migrate
+npm run db:seed
+npm run dev
+```
+
+For local PostgreSQL with Docker:
+
+```bash
+docker compose up -d postgres
+npm run db:migrate
+npm run db:seed
+```
+
+The default connection string is:
+
+```text
+postgres://myocatmongo:myocatmongo@localhost:5432/myocatmongo
+```
+
+Seed accounts:
+
+- `catlover123` / `12345678`
+- `admin` / `12345678`
+
+Base URL: `http://localhost:4000/api`
+
+Swagger UI:
+
+- `http://localhost:4000/api-docs`
+- OpenAPI JSON: `http://localhost:4000/api/openapi.json`
+
+## Auth
+
+Login first and send the token on protected APIs:
+
+```http
+Authorization: Bearer {accessToken}
+```
+
+```bash
+curl -X POST http://localhost:4000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"catlover123\",\"password\":\"12345678\"}"
+```
+
+Common error shape:
+
+```json
+{
+  "message": "error message",
+  "code": "ERROR_CODE"
+}
+```
+
+## MVP APIs
+
+Auth:
+
+- `POST /api/auth/signup`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+Cat:
+
+- `GET /api/cats`
+- `GET /api/cats/:catId`
+- `GET /api/cats/:catId/sightings`
+
+Collection:
+
+- `GET /api/collection`
+- `POST /api/collection`
+- `PATCH /api/collection/:catId/favorite`
+
+Gallery:
+
+- `GET /api/gallery/me?page=1&limit=20`
+- `GET /api/gallery/me?catId=1&page=1&limit=20`
+- `GET /api/gallery/me/cats/:catId`
+
+Sighting:
+
+- `POST /api/sightings`
+- `GET /api/sightings/me`
+- `POST /api/sightings/:photoId/confirm-cat`
+
+Map:
+
+- `GET /api/map/cats?lat=36.3727&lng=127.3602&radius=500`
+
+Profile:
+
+- `GET /api/profile/me`
+- `PATCH /api/profile/me`
+
+Ranking:
+
+- `GET /api/rankings`
+
+Admin:
+
+- `POST /api/admin/cats`
+- `PATCH /api/admin/cats/:catId`
+- `GET /api/admin/cat-candidates`
+
+## Upload
+
+`POST /api/sightings` accepts `multipart/form-data`:
+
+- `image`: jpg/png/webp, max 5MB
+- `latitude`: number
+- `longitude`: number
+
+For local API testing, it also accepts JSON with `imageUrl`, `latitude`, and `longitude`.

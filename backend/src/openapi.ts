@@ -1,0 +1,540 @@
+export const openApiDocument = {
+  openapi: '3.0.3',
+  info: {
+    title: 'Myocatmongo Backend API',
+    version: '0.1.0',
+    description: '묘캣몬고 MVP 백엔드 API 문서',
+  },
+  servers: [
+    {
+      url: 'http://localhost:4000/api',
+      description: 'Local API',
+    },
+  ],
+  tags: [
+    { name: 'Health' },
+    { name: 'Auth' },
+    { name: 'Cats' },
+    { name: 'Collection' },
+    { name: 'Gallery' },
+    { name: 'Sightings' },
+    { name: 'Map' },
+    { name: 'Profile' },
+    { name: 'Rankings' },
+    { name: 'Admin' },
+  ],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+    },
+    schemas: {
+      Error: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', example: '요청 데이터 형식이 올바르지 않습니다.' },
+          code: { type: 'string', example: 'VALIDATION_ERROR' },
+        },
+        required: ['message', 'code'],
+      },
+      User: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '1' },
+          username: { type: 'string', example: 'catlover123' },
+          nickname: { type: 'string', example: '고양이수집가' },
+          profileImageUrl: { type: 'string', nullable: true, example: null },
+        },
+      },
+      AuthResponse: {
+        type: 'object',
+        properties: {
+          user: { $ref: '#/components/schemas/User' },
+          accessToken: { type: 'string', example: 'jwt.access.token' },
+        },
+      },
+      CatListItem: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '1' },
+          name: { type: 'string', nullable: true, example: '망고' },
+          mainImageUrl: { type: 'string', nullable: true },
+          pattern: { type: 'string', nullable: true, example: 'cheese' },
+          description: { type: 'string', nullable: true },
+          isDiscovered: { type: 'boolean', example: true },
+        },
+      },
+      CatDetail: {
+        allOf: [
+          { $ref: '#/components/schemas/CatListItem' },
+          {
+            type: 'object',
+            properties: {
+              personality: { type: 'string', nullable: true, example: '사람을 잘 따름' },
+              discoveredAt: { type: 'string', nullable: true, format: 'date-time' },
+              displayName: { type: 'string', nullable: true, example: '???' },
+            },
+          },
+        ],
+      },
+      CollectionCat: {
+        type: 'object',
+        properties: {
+          catId: { type: 'string', example: '1' },
+          name: { type: 'string', nullable: true, example: '망고' },
+          mainImageUrl: { type: 'string', nullable: true },
+          pattern: { type: 'string', nullable: true },
+          discoveredAt: { type: 'string', format: 'date-time' },
+          isFavorite: { type: 'boolean', example: false },
+        },
+      },
+      GalleryPhoto: {
+        type: 'object',
+        properties: {
+          sightingId: { type: 'string', example: '1' },
+          catId: { type: 'string', nullable: true, example: '1' },
+          catName: { type: 'string', nullable: true, example: '망고' },
+          imageUrl: { type: 'string' },
+          latitude: { type: 'number', example: 36.3726 },
+          longitude: { type: 'number', example: 127.3603 },
+          takenAt: { type: 'string', format: 'date-time' },
+          isRepresentative: { type: 'boolean' },
+        },
+      },
+      Pagination: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', example: 1 },
+          limit: { type: 'integer', example: 20 },
+          totalCount: { type: 'integer', example: 42 },
+          totalPages: { type: 'integer', example: 3 },
+        },
+      },
+      Sighting: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '1' },
+          catId: { type: 'string', example: '1' },
+          catName: { type: 'string', nullable: true, example: '망고' },
+          imageUrl: { type: 'string', nullable: true },
+          latitude: { type: 'number' },
+          longitude: { type: 'number' },
+          detectionStatus: { type: 'string', example: 'matched' },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      Candidate: {
+        type: 'object',
+        properties: {
+          catId: { type: 'string', example: '1' },
+          name: { type: 'string', nullable: true, example: '망고' },
+          representativePhotoUrl: { type: 'string', nullable: true },
+          pattern: { type: 'string', nullable: true },
+          lastSeenLocation: { type: 'string', nullable: true },
+          imageSimilarityScore: { type: 'number', example: 0.87 },
+          locationScore: { type: 'number', example: 0.9 },
+          finalScore: { type: 'number', example: 0.8775 },
+        },
+      },
+      MapCat: {
+        type: 'object',
+        properties: {
+          catId: { type: 'string', example: '1' },
+          displayType: { type: 'string', enum: ['discovered_cat', 'undiscovered_recent', 'nearby_hint', 'hidden'] },
+          name: { type: 'string', nullable: true, example: '망고' },
+          lat: { type: 'number', example: 36.3726 },
+          lng: { type: 'number', example: 127.3603 },
+          modelType: { type: 'string', example: 'cat' },
+          markerLabel: { type: 'string', example: '망고' },
+          mainImageUrl: { type: 'string', nullable: true },
+        },
+      },
+      AdminCat: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '1' },
+          name: { type: 'string', nullable: true, example: '망고' },
+          description: { type: 'string', nullable: true },
+          mainImageUrl: { type: 'string', nullable: true },
+          pattern: { type: 'string', nullable: true },
+          personality: { type: 'string', nullable: true },
+          defaultLatitude: { type: 'number', nullable: true },
+          defaultLongitude: { type: 'number', nullable: true },
+          status: { type: 'string', example: 'active' },
+        },
+      },
+    },
+    responses: {
+      Unauthorized: {
+        description: '로그인이 필요함',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+      },
+      ValidationError: {
+        description: '요청 데이터 형식 오류',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+      },
+      NotFound: {
+        description: '리소스를 찾을 수 없음',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+      },
+    },
+  },
+  paths: {
+    '/health': {
+      get: {
+        tags: ['Health'],
+        summary: 'Health check',
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'ok' },
+                    service: { type: 'string', example: 'myocatmongo-backend' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/auth/signup': {
+      post: {
+        tags: ['Auth'],
+        summary: '회원가입',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['username', 'password', 'nickname'],
+                properties: {
+                  username: { type: 'string', example: 'catlover123' },
+                  password: { type: 'string', example: '12345678' },
+                  nickname: { type: 'string', example: '고양이수집가' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Created', content: { 'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } } } },
+          '400': { $ref: '#/components/responses/ValidationError' },
+        },
+      },
+    },
+    '/auth/login': {
+      post: {
+        tags: ['Auth'],
+        summary: '로그인',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['username', 'password'],
+                properties: {
+                  username: { type: 'string', example: 'catlover123' },
+                  password: { type: 'string', example: '12345678' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } } } },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/auth/me': {
+      get: {
+        tags: ['Auth'],
+        summary: '내 정보 조회',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/auth/logout': {
+      post: {
+        tags: ['Auth'],
+        summary: '로그아웃',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string', example: '로그아웃되었습니다.' } } } } } },
+        },
+      },
+    },
+    '/cats': {
+      get: {
+        tags: ['Cats'],
+        summary: '전체 고양이 목록 조회',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { cats: { type: 'array', items: { $ref: '#/components/schemas/CatListItem' } } } } } } },
+        },
+      },
+    },
+    '/cats/{catId}': {
+      get: {
+        tags: ['Cats'],
+        summary: '고양이 상세 조회',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'catId', in: 'path', required: true, schema: { type: 'integer', example: 1 } }],
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/CatDetail' } } } },
+          '404': { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/cats/{catId}/sightings': {
+      get: {
+        tags: ['Cats', 'Sightings'],
+        summary: '특정 고양이 최근 목격 기록 조회',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'catId', in: 'path', required: true, schema: { type: 'integer', example: 1 } }],
+        responses: {
+          '200': {
+            description: 'OK',
+            content: { 'application/json': { schema: { type: 'object', properties: { sightings: { type: 'array', items: { $ref: '#/components/schemas/Sighting' } } } } } },
+          },
+        },
+      },
+    },
+    '/collection': {
+      get: {
+        tags: ['Collection'],
+        summary: '내 도감 조회',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { cats: { type: 'array', items: { $ref: '#/components/schemas/CollectionCat' } } } } } } },
+        },
+      },
+      post: {
+        tags: ['Collection'],
+        summary: '도감 등록',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['catId'], properties: { catId: { type: 'integer', example: 1 }, sightingId: { type: 'string', example: '1' } } } } },
+        },
+        responses: { '201': { description: 'Created' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/collection/{catId}/favorite': {
+      patch: {
+        tags: ['Collection'],
+        summary: '즐겨찾기 변경',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'catId', in: 'path', required: true, schema: { type: 'integer', example: 1 } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['isFavorite'], properties: { isFavorite: { type: 'boolean', example: true } } } } },
+        },
+        responses: { '200': { description: 'OK' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/gallery/me': {
+      get: {
+        tags: ['Gallery'],
+        summary: '내 고양이 갤러리 조회',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'catId', in: 'query', schema: { type: 'integer', example: 1 } },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+        ],
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    photos: { type: 'array', items: { $ref: '#/components/schemas/GalleryPhoto' } },
+                    pagination: { $ref: '#/components/schemas/Pagination' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/gallery/me/cats/{catId}': {
+      get: {
+        tags: ['Gallery'],
+        summary: '특정 고양이별 내 갤러리 조회',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'catId', in: 'path', required: true, schema: { type: 'integer', example: 1 } },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+        ],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/sightings': {
+      post: {
+        tags: ['Sightings'],
+        summary: '고양이 사진 업로드 / 발견 기록 생성',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['image', 'latitude', 'longitude'],
+                properties: {
+                  image: { type: 'string', format: 'binary' },
+                  latitude: { type: 'number', example: 36.3726 },
+                  longitude: { type: 'number', example: 127.3603 },
+                  catId: { type: 'integer', description: '테스트용 강제 매칭 ID' },
+                  forceConfirmation: { type: 'boolean', description: '테스트용 후보 선택 상태 강제' },
+                },
+              },
+            },
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['imageUrl', 'latitude', 'longitude'],
+                properties: {
+                  imageUrl: { type: 'string', example: 'https://example.com/cat.jpg' },
+                  latitude: { type: 'number', example: 36.3726 },
+                  longitude: { type: 'number', example: 127.3603 },
+                  catId: { type: 'integer', example: 1 },
+                  isCat: { type: 'boolean', example: true },
+                  forceConfirmation: { type: 'boolean', example: false },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Created',
+            content: {
+              'application/json': {
+                schema: {
+                  oneOf: [
+                    { type: 'object', properties: { sightingId: { type: 'string' }, detectionStatus: { type: 'string', example: 'matched' } } },
+                    { type: 'object', properties: { detectionStatus: { type: 'string', example: 'needs_user_confirmation' }, photoId: { type: 'string' }, candidates: { type: 'array', items: { $ref: '#/components/schemas/Candidate' } } } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/sightings/me': {
+      get: {
+        tags: ['Sightings'],
+        summary: '내 업로드 기록 조회',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { sightings: { type: 'array', items: { $ref: '#/components/schemas/Sighting' } } } } } } } },
+      },
+    },
+    '/sightings/{photoId}/confirm-cat': {
+      post: {
+        tags: ['Sightings'],
+        summary: '고양이 후보 선택',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'photoId', in: 'path', required: true, schema: { type: 'integer', example: 15 } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', properties: { selectedCatId: { type: 'integer', nullable: true, example: 1 }, isNewCatCandidate: { type: 'boolean', example: false } } } } },
+        },
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/map/cats': {
+      get: {
+        tags: ['Map'],
+        summary: '지도용 고양이 상태 조회',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'lat', in: 'query', required: true, schema: { type: 'number', example: 36.3727 } },
+          { name: 'lng', in: 'query', required: true, schema: { type: 'number', example: 127.3602 } },
+          { name: 'radius', in: 'query', schema: { type: 'number', default: 500 } },
+        ],
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { cats: { type: 'array', items: { $ref: '#/components/schemas/MapCat' } } } } } } },
+        },
+      },
+    },
+    '/profile/me': {
+      get: {
+        tags: ['Profile'],
+        summary: '내 프로필 조회',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'OK' } },
+      },
+      patch: {
+        tags: ['Profile'],
+        summary: '프로필 수정',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', properties: { nickname: { type: 'string', example: '새닉네임' }, profileImageUrl: { type: 'string', nullable: true } } } } },
+        },
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/rankings': {
+      get: {
+        tags: ['Rankings'],
+        summary: '랭킹 조회',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/admin/cats': {
+      post: {
+        tags: ['Admin'],
+        summary: '관리자 고양이 등록',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/AdminCat' } } },
+        },
+        responses: { '201': { description: 'Created', content: { 'application/json': { schema: { $ref: '#/components/schemas/AdminCat' } } } } },
+      },
+    },
+    '/admin/cats/{catId}': {
+      patch: {
+        tags: ['Admin'],
+        summary: '관리자 고양이 수정',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'catId', in: 'path', required: true, schema: { type: 'integer', example: 1 } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/AdminCat' } } },
+        },
+        responses: { '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/AdminCat' } } } } },
+      },
+    },
+    '/admin/cat-candidates': {
+      get: {
+        tags: ['Admin'],
+        summary: '새로운 고양이 후보 목록 조회',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+} as const
