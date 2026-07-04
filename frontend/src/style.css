@@ -11,6 +11,20 @@ body {
   inset: 0;
 }
 
+.model-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* 3D 고양이와 겹쳐도 사진 아이콘과 클릭 영역은 항상 위에 둔다. */
+.maplibregl-marker {
+  z-index: 2;
+}
+
 #hint {
   position: fixed;
   bottom: calc(130px + env(safe-area-inset-bottom));
@@ -105,11 +119,12 @@ body {
   white-space: nowrap;
 }
 
-/* 지도 위에 남는 촬영 사진 마커 */
+/* 지도 위에 남는 촬영 사진 마커
+   말풍선을 작게, 꼬리를 길게 해서 3D 모델과 겹치지 않게 높이 띄운다. */
 .photo-marker {
   position: relative;
-  width: 60px;
-  height: 92px;
+  width: 48px;
+  height: 150px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -121,10 +136,10 @@ body {
   position: absolute;
   top: 0;
   left: 50%;
-  width: 52px;
-  height: 52px;
+  width: 42px;
+  height: 42px;
   padding: 0;
-  border: 4px solid #fff;
+  border: 3px solid #fff;
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 3px 10px rgba(33, 91, 76, 0.38);
@@ -147,14 +162,14 @@ body {
 
 .photo-marker-count {
   position: absolute;
-  top: -8px;
-  right: -8px;
+  top: -7px;
+  right: -7px;
   z-index: 2;
-  min-width: 26px;
-  height: 26px;
+  min-width: 22px;
+  height: 22px;
   box-sizing: border-box;
-  padding: 0 6px;
-  border: 3px solid #fff;
+  padding: 0 5px;
+  border: 2px solid #fff;
   border-radius: 999px;
   background: #ff766f;
   color: #fff;
@@ -172,9 +187,9 @@ body {
   content: '';
   position: absolute;
   left: 50%;
-  bottom: -31px;
-  width: 15px;
-  height: 34px;
+  bottom: -100px;
+  width: 12px;
+  height: 102px;
   background: #fff;
   transform: translateX(-50%);
   clip-path: polygon(7% 0, 93% 0, 58% 100%, 42% 100%);
@@ -522,27 +537,4 @@ body {
   line-height: 1;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-}
-
-/* 캐릭터 마커 (임시 디자인, 추후 교체 예정) */
-.character-marker {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: #ff6b6b;
-  border: 3px solid #fff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-}
-
-.character-marker::after {
-  content: '';
-  position: absolute;
-  top: -9px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 9px solid #ff6b6b;
 }
