@@ -15,7 +15,7 @@ export const FLOWER_DECORATION_CONFIG = {
     east: 127.3674,
     north: 36.3758,
   },
-  widthMetersRange: { min: 0.5, max: 1.2},
+  widthMetersRange: { min: 1.5, max: 2.0},
   icons: [
     { url: '/decorations/flower-pink.png', weight: 3 },
     { url: '/decorations/flower-white.png', weight: 2 },
