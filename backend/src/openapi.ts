@@ -46,6 +46,7 @@ export const openApiDocument = {
           id: { type: 'string', example: '1' },
           username: { type: 'string', example: 'catlover123' },
           nickname: { type: 'string', example: '고양이수집가' },
+          email: { type: 'string', nullable: true, example: 'catlover123@kaist.ac.kr' },
           profileImageUrl: { type: 'string', nullable: true, example: null },
         },
       },
@@ -205,18 +206,60 @@ export const openApiDocument = {
         },
       },
     },
-    '/auth/signup': {
+    '/auth/signup/send-code': {
       post: {
         tags: ['Auth'],
-        summary: '회원가입',
+        summary: '회원가입 이메일 인증 코드 전송',
         requestBody: {
           required: true,
           content: {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['username', 'password', 'nickname'],
+                required: ['email'],
                 properties: {
+                  email: { type: 'string', format: 'email', example: 'catlover123@kaist.ac.kr' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string', example: '인증 코드를 전송했습니다.' },
+                    expiresInSeconds: { type: 'integer', example: 600 },
+                  },
+                },
+              },
+            },
+          },
+          '400': { $ref: '#/components/responses/ValidationError' },
+          '409': { description: '이미 가입된 이메일', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          '429': { description: '재전송 요청이 너무 잦음', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/auth/signup': {
+      post: {
+        tags: ['Auth'],
+        summary: '회원가입',
+        description: '가입 전 `/auth/signup/send-code`로 받은 인증 코드가 필요합니다.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['email', 'code', 'username', 'password', 'nickname'],
+                properties: {
+                  email: { type: 'string', format: 'email', example: 'catlover123@kaist.ac.kr' },
+                  code: { type: 'string', example: '123456' },
                   username: { type: 'string', example: 'catlover123' },
                   password: { type: 'string', example: '12345678' },
                   nickname: { type: 'string', example: '고양이수집가' },
@@ -228,6 +271,8 @@ export const openApiDocument = {
         responses: {
           '201': { description: 'Created', content: { 'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } } } },
           '400': { $ref: '#/components/responses/ValidationError' },
+          '409': { description: '이미 존재하는 아이디 또는 이메일', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          '429': { description: '인증 시도 횟수 초과', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
         },
       },
     },

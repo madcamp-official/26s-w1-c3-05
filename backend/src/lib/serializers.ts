@@ -4,6 +4,7 @@ export const publicUser = (user: UserRow) => ({
   id: String(user.id),
   username: user.username,
   nickname: user.nickname,
+  email: user.email,
   profileImageUrl: user.profile_image_url,
 })
 

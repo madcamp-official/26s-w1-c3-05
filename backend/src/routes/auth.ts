@@ -1,25 +1,90 @@
 import bcrypt from 'bcryptjs'
 import { Router } from 'express'
 import { z } from 'zod'
-import { createUser, findUserByUsername, toPublicUser } from '../db/repositories.js'
+import {
+  consumeEmailVerification,
+  createEmailVerification,
+  createUser,
+  findLatestEmailVerification,
+  findUserByEmail,
+  findUserByUsername,
+  incrementEmailVerificationAttempts,
+  toPublicUser,
+} from '../db/repositories.js'
 import { getCurrentUser, requireAuth, signAccessToken, type AuthRequest } from '../lib/auth.js'
 import { HttpError } from '../lib/httpError.js'
+import { sendVerificationEmail } from '../lib/mailer.js'
+import { generateVerificationCode, hashVerificationCode } from '../lib/verificationCode.js'
 
 export const authRouter = Router()
 
+const CODE_TTL_MINUTES = 10
+const RESEND_COOLDOWN_SECONDS = 60
+const MAX_VERIFY_ATTEMPTS = 5
+
+const sendCodeSchema = z.object({
+  email: z.string().email().max(255),
+})
+
 const signupSchema = z.object({
+  email: z.string().email().max(255),
+  code: z.string().length(6),
   username: z.string().min(3).max(50),
   password: z.string().min(6).max(100),
   nickname: z.string().min(1).max(50),
 })
 
+authRouter.post('/auth/signup/send-code', async (req, res, next) => {
+  try {
+    const { email } = sendCodeSchema.parse(req.body)
+    if (await findUserByEmail(email)) throw new HttpError(409, '이미 가입된 이메일입니다.', 'DUPLICATED_EMAIL')
+
+    const latest = await findLatestEmailVerification(email)
+    if (latest) {
+      const secondsSinceSent = (Date.now() - new Date(latest.created_at).getTime()) / 1000
+      if (secondsSinceSent < RESEND_COOLDOWN_SECONDS) {
+        const waitSeconds = Math.ceil(RESEND_COOLDOWN_SECONDS - secondsSinceSent)
+        throw new HttpError(429, `잠시 후 다시 시도해주세요. (${waitSeconds}초)`, 'TOO_MANY_REQUESTS')
+      }
+    }
+
+    const code = generateVerificationCode()
+    const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000).toISOString()
+    await createEmailVerification({ email, codeHash: hashVerificationCode(code), expiresAt })
+    await sendVerificationEmail(email, code)
+
+    res.json({ message: '인증 코드를 전송했습니다.', expiresInSeconds: CODE_TTL_MINUTES * 60 })
+  } catch (error) {
+    next(error)
+  }
+})
+
 authRouter.post('/auth/signup', async (req, res, next) => {
   try {
     const body = signupSchema.parse(req.body)
+
     if (await findUserByUsername(body.username)) throw new HttpError(409, '이미 존재하는 아이디입니다.', 'DUPLICATED_USERNAME')
+    if (await findUserByEmail(body.email)) throw new HttpError(409, '이미 가입된 이메일입니다.', 'DUPLICATED_EMAIL')
+
+    const verification = await findLatestEmailVerification(body.email)
+    if (!verification || verification.consumed_at) {
+      throw new HttpError(400, '인증 코드를 먼저 요청해주세요.', 'VERIFICATION_NOT_FOUND')
+    }
+    if (new Date(verification.expires_at).getTime() < Date.now()) {
+      throw new HttpError(400, '인증 코드가 만료되었습니다.', 'VERIFICATION_EXPIRED')
+    }
+    if (verification.attempts >= MAX_VERIFY_ATTEMPTS) {
+      throw new HttpError(429, '인증 시도 횟수를 초과했습니다. 코드를 다시 요청해주세요.', 'TOO_MANY_ATTEMPTS')
+    }
+    if (verification.code_hash !== hashVerificationCode(body.code)) {
+      await incrementEmailVerificationAttempts(verification.id)
+      throw new HttpError(400, '인증 코드가 올바르지 않습니다.', 'INVALID_CODE')
+    }
+
+    await consumeEmailVerification(verification.id)
 
     const passwordHash = await bcrypt.hash(body.password, 10)
-    const user = await createUser({ username: body.username, passwordHash, nickname: body.nickname })
+    const user = await createUser({ username: body.username, passwordHash, nickname: body.nickname, email: body.email })
     res.status(201).json({ user: toPublicUser(user), accessToken: signAccessToken(user) })
   } catch (error) {
     next(error)

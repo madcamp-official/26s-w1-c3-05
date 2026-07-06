@@ -7,6 +7,7 @@ import type {
   CatPlacementRow,
   CatRow,
   CatSightingRow,
+  EmailVerificationRow,
   GalleryPhotoRow,
   UserCatCollectionRow,
   UserRow,
@@ -28,21 +29,40 @@ export const toPublicUser = (user: UserRow) => ({
   id: String(user.id),
   username: user.username,
   nickname: user.nickname,
+  email: user.email,
   profileImageUrl: user.profile_image_url,
 })
 
 export const findUserById = (id: number) => one<UserRow>('SELECT * FROM users WHERE id = $1', [id])
 export const findUserByUsername = (username: string) => one<UserRow>('SELECT * FROM users WHERE username = $1', [username])
+export const findUserByEmail = (email: string) => one<UserRow>('SELECT * FROM users WHERE email = $1', [email])
 
-export const createUser = async (input: { username: string; passwordHash: string; nickname: string; role?: string }) => {
+export const createUser = async (input: { username: string; passwordHash: string; nickname: string; email: string; role?: string }) => {
   const result = await query<UserRow>(
-    `INSERT INTO users (username, password_hash, nickname, role)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO users (username, password_hash, nickname, email, role)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [input.username, input.passwordHash, input.nickname, input.role ?? 'user'],
+    [input.username, input.passwordHash, input.nickname, input.email, input.role ?? 'user'],
   )
   return result.rows[0]
 }
+
+export const createEmailVerification = (input: { email: string; codeHash: string; expiresAt: string }) =>
+  one<EmailVerificationRow>(
+    `INSERT INTO email_verifications (email, code_hash, expires_at)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [input.email, input.codeHash, input.expiresAt],
+  )
+
+export const findLatestEmailVerification = (email: string) =>
+  one<EmailVerificationRow>('SELECT * FROM email_verifications WHERE email = $1 ORDER BY created_at DESC LIMIT 1', [email])
+
+export const consumeEmailVerification = (id: number) =>
+  run('UPDATE email_verifications SET consumed_at = CURRENT_TIMESTAMP WHERE id = $1', [id])
+
+export const incrementEmailVerificationAttempts = (id: number) =>
+  run('UPDATE email_verifications SET attempts = attempts + 1 WHERE id = $1', [id])
 
 export const updateUserProfile = async (userId: number, input: { nickname?: string; profileImageUrl?: string | null }) => {
   const current = await findUserById(userId)

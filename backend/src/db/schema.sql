@@ -9,6 +9,24 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Email used for signup verification. Nullable so pre-existing rows are unaffected;
+-- Postgres unique indexes treat NULLs as distinct, so multiple legacy rows without
+-- an email can coexist.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Short-lived codes emailed to prove ownership of an address before signup completes.
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id BIGSERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  code_hash VARCHAR(255) NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_email_verifications_email_created_at ON email_verifications(email, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS campus_zones (
   id BIGSERIAL PRIMARY KEY,
   name VARCHAR(100) NOT NULL,

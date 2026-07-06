@@ -3,10 +3,21 @@ export interface UserRow {
   username: string
   password_hash: string
   nickname: string
+  email: string | null
   profile_image_url: string | null
   role: 'user' | 'admin'
   created_at: string
   updated_at: string
+}
+
+export interface EmailVerificationRow {
+  id: number
+  email: string
+  code_hash: string
+  expires_at: string
+  consumed_at: string | null
+  attempts: number
+  created_at: string
 }
 
 export interface CatRow {

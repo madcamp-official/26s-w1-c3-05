@@ -39,6 +39,7 @@ app.get('/', (_req, res) => {
       '/api/health',
       '/api/openapi.json',
       '/api-docs',
+      '/api/auth/signup/send-code',
       '/api/auth/signup',
       '/api/auth/login',
       '/api/auth/logout',
