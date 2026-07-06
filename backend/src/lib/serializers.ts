@@ -1,4 +1,5 @@
 import type { CampusZoneRow, CatIdentificationCandidateRow, CatPlacementRow, CatRow, CatSightingRow, GalleryPhotoRow, UserCatCollectionRow, UserRow } from '../db/types.js'
+import { buildingModelAsset, resolveBuildingModelKey } from './buildingModels.js'
 import { modelAsset, resolveModelKey } from './catModels.js'
 
 export const publicUser = (user: UserRow) => ({
@@ -91,6 +92,54 @@ export const mapCat = (placement: CatPlacementRow, isDiscovered: boolean) => {
     modelScale: isDiscovered ? asset.scale : null,
     markerLabel: isDiscovered ? placement.name ?? '고양이' : '???',
     mainImageUrl: isDiscovered ? placement.representative_photo_url ?? null : null,
+  }
+}
+
+export const catActor = (placement: CatPlacementRow, isDiscovered: boolean, distanceMeters: number) => {
+  const modelKey = resolveModelKey({ model_key: placement.model_key, pattern: placement.pattern })
+  const asset = modelAsset(modelKey)
+  return {
+    catId: String(placement.cat_id),
+    displayType: isDiscovered ? 'discovered_cat' : 'undiscovered_recent',
+    name: isDiscovered ? placement.name : null,
+    lat: placement.latitude,
+    lng: placement.longitude,
+    distanceMeters: Number(distanceMeters.toFixed(2)),
+    zoneId: placement.zone_id == null ? null : String(placement.zone_id),
+    zoneName: placement.zone_name ?? null,
+    zoneType: placement.zone_type ?? null,
+    surface: placement.surface,
+    anchorKey: placement.anchor_key,
+    heightOffsetMeters: placement.height_offset_meters,
+    movementRadiusMeters: placement.movement_radius_meters,
+    modelType: isDiscovered ? 'cat' : 'bush',
+    modelKey: isDiscovered ? modelKey : 'bush',
+    modelUrl: isDiscovered ? asset.assetUrl : null,
+    modelScale: isDiscovered ? asset.scale : null,
+    animationKey: isDiscovered ? placement.animation_key : 'idle',
+    animationStartedAt: placement.animation_started_at,
+    animationExpiresAt: placement.animation_expires_at,
+    mainImageUrl: isDiscovered ? placement.representative_photo_url ?? null : null,
+  }
+}
+
+export const mapObject = (zone: CampusZoneRow, distanceMeters: number) => {
+  const modelKey = resolveBuildingModelKey(zone)
+  const asset = buildingModelAsset(modelKey)
+  return {
+    id: String(zone.id),
+    type: zone.type,
+    name: zone.name,
+    lat: zone.latitude,
+    lng: zone.longitude,
+    distanceMeters: Number(distanceMeters.toFixed(2)),
+    modelType: zone.model_type ?? 'building',
+    modelKey,
+    modelUrl: asset.assetUrl,
+    modelScale: asset.scale,
+    rotationY: asset.rotationY,
+    radiusMeters: zone.radius_meters,
+    description: zone.description,
   }
 }
 

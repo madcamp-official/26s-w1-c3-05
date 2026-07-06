@@ -2,6 +2,9 @@ CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
   username VARCHAR(50) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NULL,
+  auth_provider VARCHAR(20) NOT NULL DEFAULT 'local',
+  provider_user_id VARCHAR(255) NULL,
   nickname VARCHAR(50) NOT NULL,
   profile_image_url TEXT NULL,
   role VARCHAR(20) NOT NULL DEFAULT 'user',
@@ -96,6 +99,13 @@ CREATE TABLE IF NOT EXISTS cat_placements (
   latitude DECIMAL(10, 7) NOT NULL,
   longitude DECIMAL(10, 7) NOT NULL,
   zone_id BIGINT NULL REFERENCES campus_zones(id),
+  surface VARCHAR(30) NOT NULL DEFAULT 'ground',
+  anchor_key VARCHAR(50) NULL,
+  height_offset_meters DECIMAL(7, 2) NOT NULL DEFAULT 0,
+  movement_radius_meters DECIMAL(7, 2) NOT NULL DEFAULT 4,
+  animation_key VARCHAR(50) NOT NULL DEFAULT 'idle',
+  animation_started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  animation_expires_at TIMESTAMPTZ NULL,
   selected_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -169,6 +179,24 @@ ALTER TABLE user_cat_collections ADD COLUMN IF NOT EXISTS custom_name VARCHAR(50
 
 -- Which reusable 3D model represents this cat on the map (see lib/catModels).
 ALTER TABLE cats ADD COLUMN IF NOT EXISTS model_key VARCHAR(40) NULL;
+
+-- Runtime 3D actor state for cats. Frontend consumes these values to anchor
+-- cats on buildings/ground and choose animation clips.
+ALTER TABLE cat_placements ADD COLUMN IF NOT EXISTS surface VARCHAR(30) NOT NULL DEFAULT 'ground';
+ALTER TABLE cat_placements ADD COLUMN IF NOT EXISTS anchor_key VARCHAR(50) NULL;
+ALTER TABLE cat_placements ADD COLUMN IF NOT EXISTS height_offset_meters DECIMAL(7, 2) NOT NULL DEFAULT 0;
+ALTER TABLE cat_placements ADD COLUMN IF NOT EXISTS movement_radius_meters DECIMAL(7, 2) NOT NULL DEFAULT 4;
+ALTER TABLE cat_placements ADD COLUMN IF NOT EXISTS animation_key VARCHAR(50) NOT NULL DEFAULT 'idle';
+ALTER TABLE cat_placements ADD COLUMN IF NOT EXISTS animation_started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE cat_placements ADD COLUMN IF NOT EXISTS animation_expires_at TIMESTAMPTZ NULL;
+
+-- Social login identity. Existing email/password accounts remain auth_provider='local'.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) NOT NULL DEFAULT 'local';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS provider_user_id VARCHAR(255) NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oauth_provider_user_id
+  ON users(auth_provider, provider_user_id)
+  WHERE provider_user_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_cat_photos_user_taken_at ON cat_photos(user_id, taken_at);
 CREATE INDEX IF NOT EXISTS idx_cat_photos_cat_taken_at ON cat_photos(cat_id, taken_at);

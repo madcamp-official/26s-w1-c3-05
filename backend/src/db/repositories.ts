@@ -29,14 +29,17 @@ export const run = async (sql: string, params: unknown[] = []) => query(sql, par
 export const toPublicUser = (user: UserRow) => ({
   id: String(user.id),
   username: user.username,
-  nickname: user.nickname,
   email: user.email,
+  authProvider: user.auth_provider,
+  nickname: user.nickname,
   profileImageUrl: user.profile_image_url,
 })
 
 export const findUserById = (id: number) => one<UserRow>('SELECT * FROM users WHERE id = $1', [id])
 export const findUserByUsername = (username: string) => one<UserRow>('SELECT * FROM users WHERE username = $1', [username])
 export const findUserByEmail = (email: string) => one<UserRow>('SELECT * FROM users WHERE email = $1', [email])
+export const findUserByOAuthIdentity = (provider: string, providerUserId: string) =>
+  one<UserRow>('SELECT * FROM users WHERE auth_provider = $1 AND provider_user_id = $2', [provider, providerUserId])
 
 export const createUser = async (input: { username: string; passwordHash: string; nickname: string; email: string; role?: string }) => {
   const result = await query<UserRow>(
@@ -64,6 +67,34 @@ export const consumeEmailVerification = (id: number) =>
 
 export const incrementEmailVerificationAttempts = (id: number) =>
   run('UPDATE email_verifications SET attempts = attempts + 1 WHERE id = $1', [id])
+
+export const createOAuthUser = async (input: {
+  username: string
+  email?: string | null
+  authProvider: 'google' | 'kakao' | 'guest'
+  providerUserId: string
+  nickname: string
+  profileImageUrl?: string | null
+  role?: string
+}) => {
+  const result = await query<UserRow>(
+    `INSERT INTO users
+      (username, password_hash, email, auth_provider, provider_user_id, nickname, profile_image_url, role)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING *`,
+    [
+      input.username,
+      `oauth:${input.authProvider}`,
+      input.email ?? null,
+      input.authProvider,
+      input.providerUserId,
+      input.nickname,
+      input.profileImageUrl ?? null,
+      input.role ?? 'user',
+    ],
+  )
+  return result.rows[0]
+}
 
 export const updateUserProfile = async (userId: number, input: { nickname?: string; profileImageUrl?: string | null }) => {
   const current = await findUserById(userId)
@@ -454,6 +485,24 @@ export const findPlacements = () =>
     `SELECT cp.*, c.name, c.representative_photo_url, c.pattern, c.model_key
      FROM cat_placements cp
      JOIN cats c ON c.id = cp.cat_id
+     WHERE c.status = 'active'
+     ORDER BY cp.updated_at DESC`,
+  )
+
+export const findCatActors = () =>
+  many<CatPlacementRow>(
+    `SELECT
+       cp.*,
+       c.name,
+       c.representative_photo_url,
+       c.pattern,
+       c.model_key,
+       z.name AS zone_name,
+       z.type AS zone_type,
+       z.model_type AS zone_model_type
+     FROM cat_placements cp
+     JOIN cats c ON c.id = cp.cat_id
+     LEFT JOIN campus_zones z ON z.id = cp.zone_id
      WHERE c.status = 'active'
      ORDER BY cp.updated_at DESC`,
   )

@@ -56,6 +56,9 @@ await upsertCollection({ userId: 3, catId: 2, photoId: 2, seenAt: '2026-07-01T18
 await upsertPlacement({ catId: 1, sourceSightingId: 1, latitude: 36.3726, longitude: 127.3603, zoneId: 1 })
 await upsertPlacement({ catId: 2, sourceSightingId: 2, latitude: 36.3717, longitude: 127.3611, zoneId: 2 })
 await upsertPlacement({ catId: 3, sourceSightingId: 3, latitude: 36.3734, longitude: 127.3615, zoneId: 3 })
+await run("UPDATE cat_placements SET surface = 'roof', anchor_key = 'roof_center', height_offset_meters = 12, movement_radius_meters = 5, animation_key = 'sit' WHERE cat_id = 1")
+await run("UPDATE cat_placements SET surface = 'ground', anchor_key = 'entrance', height_offset_meters = 0, movement_radius_meters = 7, animation_key = 'walk' WHERE cat_id = 2")
+await run("UPDATE cat_placements SET surface = 'roof', anchor_key = 'roof_edge', height_offset_meters = 10, movement_radius_meters = 4, animation_key = 'sleep' WHERE cat_id = 3")
 
 await syncSerialSequences()
 

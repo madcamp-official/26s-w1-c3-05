@@ -68,8 +68,39 @@ Auth:
 
 - `POST /api/auth/signup`
 - `POST /api/auth/login`
+- `POST /api/auth/guest`
+- `POST /api/auth/google`
+- `POST /api/auth/kakao`
 - `POST /api/auth/logout`
 - `GET /api/auth/me`
+
+Guest login creates an anonymous user row and returns the same JWT response shape:
+
+```bash
+curl -X POST http://localhost:4000/api/auth/guest
+```
+
+Google login:
+
+1. Create an OAuth 2.0 Web client in Google Cloud Console.
+2. Set `GOOGLE_CLIENT_ID` in `.env`.
+3. Frontend gets a Google ID token and sends it to the backend:
+
+```bash
+curl -X POST http://localhost:4000/api/auth/google \
+  -H "Content-Type: application/json" \
+  -d "{\"idToken\":\"GOOGLE_ID_TOKEN_FROM_FRONTEND\"}"
+```
+
+Kakao login:
+
+Frontend gets a Kakao access token and sends it to the backend:
+
+```bash
+curl -X POST http://localhost:4000/api/auth/kakao \
+  -H "Content-Type: application/json" \
+  -d "{\"accessToken\":\"KAKAO_ACCESS_TOKEN_FROM_FRONTEND\"}"
+```
 
 Cat:
 
@@ -98,6 +129,39 @@ Sighting:
 Map:
 
 - `GET /api/map/cats?lat=36.3727&lng=127.3602&radius=500`
+- `GET /api/map/objects?lat=36.3727&lng=127.3602&minDistance=30&maxDistance=250`
+- `GET /api/map/cat-actors?lat=36.3727&lng=127.3602&radius=500`
+
+`/api/map/objects` returns campus zones whose original coordinates are inside
+the requested distance band from the user avatar. By default it only returns
+`modelType=building` objects and resolves each one to a reusable frontend asset
+such as `/models/buildings/library.glb`.
+
+`/api/map/cat-actors` returns nearby cats with 3D actor state: `surface`,
+`anchorKey`, `heightOffsetMeters`, `movementRadiusMeters`, `modelUrl`, and
+`animationKey`. The backend decides where the actor is anchored and what motion
+state it is in; the frontend loads the model and plays the matching animation.
+
+Frontend usage:
+
+```ts
+const params = new URLSearchParams({
+  lat: String(userAvatar.lat),
+  lng: String(userAvatar.lng),
+  radius: '500',
+})
+
+const response = await fetch(`${API_BASE_URL}/map/cat-actors?${params}`, {
+  headers: { Authorization: `Bearer ${accessToken}` },
+})
+const { cats } = await response.json()
+
+for (const cat of cats) {
+  // Load cat.modelUrl, place it at cat.lat/cat.lng, raise it by
+  // cat.heightOffsetMeters when cat.surface === 'roof', then play
+  // the clip named cat.animationKey if the GLB exposes it.
+}
+```
 
 Profile:
 

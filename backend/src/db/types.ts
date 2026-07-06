@@ -2,8 +2,10 @@ export interface UserRow {
   id: number
   username: string
   password_hash: string
-  nickname: string
   email: string | null
+  auth_provider: 'local' | 'google' | 'kakao' | 'guest'
+  provider_user_id: string | null
+  nickname: string
   profile_image_url: string | null
   role: 'user' | 'admin'
   created_at: string
@@ -100,12 +102,22 @@ export interface CatPlacementRow {
   latitude: number
   longitude: number
   zone_id: number | null
+  surface: string
+  anchor_key: string | null
+  height_offset_meters: number
+  movement_radius_meters: number
+  animation_key: string
+  animation_started_at: string
+  animation_expires_at: string | null
   selected_at: string
   updated_at: string
   name?: string | null
   representative_photo_url?: string | null
   pattern?: string | null
   model_key?: string | null
+  zone_name?: string | null
+  zone_type?: string | null
+  zone_model_type?: string | null
 }
 
 export interface UserCatCollectionRow {
