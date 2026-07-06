@@ -1,6 +1,5 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import './style.css'
 import { addFlowerDecorations } from './FlowerDecorations.js'
 import { createAnimatedModelLayer } from './model-layer.js'
 import { MOCK_USER_AVATAR, fetchMockCatActors, fetchMockMapObjects } from './mock-map-api.js'
@@ -277,7 +276,27 @@ function startPositionTracking() {
   )
 }
 
-startPositionTracking()
+let positionTrackingStarted = false
+
+function enterApp() {
+  const welcome = document.querySelector('#welcome')
+  if (!welcome || welcome.classList.contains('is-leaving')) return
+
+  welcome.classList.add('is-leaving')
+  if (!positionTrackingStarted) {
+    positionTrackingStarted = true
+    startPositionTracking()
+  }
+
+  window.setTimeout(() => {
+    welcome.remove()
+    map.resize()
+  }, 420)
+}
+
+document.querySelectorAll('[data-enter-app]').forEach((button) => {
+  button.addEventListener('click', enterApp)
+})
 
 // ─────────────────────────────────────────────
 // 기본 제스처 핸들러 on/off

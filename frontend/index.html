@@ -7,9 +7,20 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <link rel="preconnect" href="https://esm.sh" crossorigin />
-    <title>KAIST 3D 지도</title>
+    <link rel="stylesheet" href="./src/style.css" />
+    <title>캣치미</title>
   </head>
   <body>
+    <section id="welcome" aria-label="캣치미 시작 화면">
+      <div class="welcome-reference-shell">
+        <img class="welcome-reference" src="./src/assets/welcome-figma.png" alt="캣치미 시작 화면" />
+        <button class="welcome-hitbox welcome-hitbox--email" data-enter-app aria-label="이메일로 시작하기"></button>
+        <button class="welcome-hitbox welcome-hitbox--google" data-enter-app aria-label="Google로 계속하기"></button>
+        <button class="welcome-hitbox welcome-hitbox--apple" data-enter-app aria-label="Apple로 계속하기"></button>
+        <button class="welcome-hitbox welcome-hitbox--guest" data-enter-app aria-label="로그인하지 않고 둘러보기"></button>
+      </div>
+    </section>
+
     <div id="map"></div>
     <div id="hint">더블탭: 시점 전환 · 마커 시점에서 한 손가락: 회전 · 두 손가락: 확대</div>
 
@@ -86,6 +97,6 @@
       </section>
     </div>
 
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="./src/main.js"></script>
   </body>
 </html>
