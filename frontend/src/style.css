@@ -9,6 +9,16 @@ body {
 #map {
   position: fixed;
   inset: 0;
+  /* Pikmin풍 원본의 색감만 남긴, 오브젝트 없는 하늘 그라데이션. */
+  background: linear-gradient(
+    to bottom,
+    #399fe8 0%,
+    #55b9e9 9%,
+    #70cddd 16%,
+    #8cddd5 22%,
+    #a7e5d2 26%,
+    #a7e5d2 100%
+  );
 }
 
 .model-overlay {
