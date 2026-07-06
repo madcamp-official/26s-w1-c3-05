@@ -1,6 +1,7 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './style.css'
+import { addFlowerDecorations } from './FlowerDecorations.js'
 
 // KAIST 본원 (대전) 중심 좌표: [경도, 위도]
 const KAIST_CENTER = [127.3628, 36.3721]
@@ -124,6 +125,11 @@ function initScene() {
     'fog-ground-blend': 0.9,
   })
   applyTextures()
+  try {
+    addFlowerDecorations(map)
+  } catch (error) {
+    console.warn('꽃 장식 초기화 실패:', error)
+  }
 }
 map.on('styledata', initScene)
 map.on('load', initScene)
@@ -762,3 +768,14 @@ const photoRestorePromise = restorePhotos()
 setTimeout(() => {
   document.querySelector('#hint').style.opacity = '0'
 }, 5000)
+
+// 백엔드 연동 테스트용 코드
+fetch('http://localhost:4000/api/health')
+  .then((res) => res.json())
+  .then((data) => {
+    console.log('🎉 백엔드 서버 연동 성공:', data)
+  })
+  .catch((err) => {
+    console.error('❌ 백엔드 서버 연동 실패:', err)
+  })
+
