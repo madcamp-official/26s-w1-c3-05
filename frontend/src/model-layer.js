@@ -12,8 +12,8 @@ const AVATAR_WORLD_HEADING = Math.PI
 
 // 줌에 따른 모델 크기: 카메라가 다가갈수록(줌인) 지도와 함께 커진다.
 // 지수 1이면 지도와 완전히 같은 비율, 낮출수록 완만해진다.
-const MODEL_BASE_ZOOM = 13.8 // 이 줌에서 모델이 기준 크기(basePixelHeight)
-const MODEL_ZOOM_EXPONENT = 0.4
+const MODEL_BASE_ZOOM = 14.1 // 이 줌(전체 시점)에서 모델이 기준 크기(basePixelHeight)
+const MODEL_ZOOM_EXPONENT = 0.41
 const MODEL_MIN_ZOOM_SCALE = 0.35
 const MODEL_MAX_ZOOM_SCALE = 7
 

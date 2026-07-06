@@ -6,11 +6,12 @@ import { createAnimatedModelLayer } from './model-layer.js'
 // KAIST 본원 (대전) 중심 좌표: [경도, 위도]
 const KAIST_CENTER = [127.3628, 36.3721]
 
-// 초기: 캠퍼스 전체가 한눈에 보이는 시점 (줌을 낮추고 살짝 위에서 내려다봄)
+// 초기: 캠퍼스만 화면에 담기는 시점 (캠퍼스 밖 불필요한 지역은 보이지 않게)
+// 세로로 긴 폰 화면에서 서쪽 기숙사 지역까지 담기게 중심을 살짝 서쪽으로 둔다.
 const OVERVIEW_VIEW = {
-  center: KAIST_CENTER,
-  zoom: 13.8,
-  pitch: 45,
+  center: [127.3623, 36.3699],
+  zoom: 14.1,
+  pitch: 25,
   bearing: -20,
 }
 
@@ -21,7 +22,7 @@ const FOLLOW_MIN_ZOOM = 16 // 가장 축소(카메라 최대 높이)
 const FOLLOW_MAX_ZOOM = 20 // 가장 확대(카메라 최저 높이)
 const FOLLOW_PITCH_MIN = 15 // 최대 높이일 때 각도(거의 수직으로 내려다봄)
 const FOLLOW_PITCH_MAX = 72 // 확대일 때 각도(옆에서, maxPitch 75 이내)
-const FOLLOW_START_ZOOM = 19.7 // 진입 시 줌 (게임 캐릭터에 가까운 시점)
+const FOLLOW_START_ZOOM = FOLLOW_MAX_ZOOM // 진입부터 하늘이 가장 많이 보이는 최대 pitch(72°)
 const ORBIT_ROT_SPEED = 0.4 // 한 손가락 스와이프 1px당 회전 각도(도)
 const PINCH_SENSITIVITY = 2.4 // 핀치 확대/축소 감도(클수록 민감)
 const SWIPE_DEAD_ZONE_PX = 8 // 이만큼 움직이기 전에는 탭으로 간주 (튕김 방지)
@@ -32,10 +33,11 @@ const map = new maplibregl.Map({
   style: '/monument-style.json',
   ...OVERVIEW_VIEW,
   maxPitch: 75,
-  // 캠퍼스 주변을 크게 벗어나지 못하게 제한 (선택 사항)
+  minZoom: 13.9, // 캠퍼스 밖이 훤히 보일 만큼 축소되지 않게
+  // 캠퍼스를 크게 벗어나지 못하게 제한 (서쪽 기숙사 지역까지 여유 포함)
   maxBounds: [
-    [127.32, 36.35], // 남서쪽 모서리
-    [127.41, 36.40], // 북동쪽 모서리
+    [127.344, 36.359], // 남서쪽 모서리
+    [127.378, 36.385], // 북동쪽 모서리
   ],
   attributionControl: { compact: true },
 })
@@ -111,22 +113,13 @@ async function applyTextures() {
   map.triggerRepaint() // 패턴 적용 후 즉시 다시 그리기
 }
 
-// 스타일이 파싱되면(레이어 생성 시점) 하늘 + 텍스처 적용.
+// 스타일이 파싱되면(레이어 생성 시점) 텍스처 적용.
 // 'load' 이벤트는 sprite/glyphs 로딩이 느리면 지연될 수 있어 'styledata'로 트리거.
 let sceneInited = false
 function initScene() {
   if (sceneInited) return
   if (!map.getLayer('background')) return // 아직 스타일 파싱 전
   sceneInited = true
-  // 지평선 하늘 그라데이션 (기울였을 때 게임 같은 분위기)
-  map.setSky({
-    'sky-color': '#8fd8cd',
-    'horizon-color': '#fdeedb',
-    'fog-color': '#fdeedb',
-    'sky-horizon-blend': 0.6,
-    'horizon-fog-blend': 0.7,
-    'fog-ground-blend': 0.9,
-  })
   applyTextures()
 }
 map.on('styledata', initScene)
