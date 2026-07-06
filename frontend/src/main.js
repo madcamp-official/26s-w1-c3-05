@@ -3,6 +3,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import './style.css'
 import { addFlowerDecorations } from './FlowerDecorations.js'
 import { createAnimatedModelLayer } from './model-layer.js'
+import { MOCK_USER_AVATAR, fetchMockCatActors, fetchMockMapObjects } from './mock-map-api.js'
 
 // KAIST 본원 (대전) 중심 좌표: [경도, 위도]
 const KAIST_CENTER = [127.3628, 36.3721]
@@ -44,6 +45,8 @@ const map = new maplibregl.Map({
 })
 
 const animatedModelLayer = createAnimatedModelLayer(map)
+const mockBuildingMarkers = new Map()
+const MOCK_MAP_MODE = true
 
 // 기본 더블탭 확대 동작 끄기 (우리가 직접 더블탭을 시점 전환에 사용)
 map.doubleClickZoom.disable()
@@ -132,6 +135,91 @@ map.on('styledata', initScene)
 map.on('load', initScene)
 initScene()
 
+function latestSeenLabel(isoDate) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(isoDate))
+}
+
+function addMockBuildingMarker(object) {
+  if (mockBuildingMarkers.has(object.id)) return
+
+  const marker = document.createElement('button')
+  marker.className = 'mock-building-marker'
+  marker.type = 'button'
+  marker.setAttribute('aria-label', `${object.name} mock building`)
+
+  const tower = document.createElement('span')
+  tower.className = 'mock-building-marker-tower'
+  const label = document.createElement('span')
+  label.className = 'mock-building-marker-label'
+  label.textContent = object.name
+  marker.append(tower, label)
+
+  new maplibregl.Marker({
+    element: marker,
+    anchor: 'bottom',
+    pitchAlignment: 'viewport',
+    rotationAlignment: 'viewport',
+    subpixelPositioning: true,
+  })
+    .setLngLat([object.lng, object.lat])
+    .addTo(map)
+
+  mockBuildingMarkers.set(object.id, marker)
+}
+
+function addMockCatInfoMarker(cat) {
+  const marker = document.createElement('button')
+  marker.className = 'mock-cat-info-marker'
+  marker.type = 'button'
+  marker.setAttribute('aria-label', `${cat.name} latest sighting`)
+
+  const image = document.createElement('img')
+  image.src = cat.mainImageUrl
+  image.alt = ''
+  const content = document.createElement('span')
+  content.className = 'mock-cat-info-content'
+  const name = document.createElement('strong')
+  name.textContent = cat.name
+  const meta = document.createElement('small')
+  meta.textContent = `${cat.zoneName} · ${latestSeenLabel(cat.latestSeenAt)}`
+  content.append(name, meta)
+  marker.append(image, content)
+
+  new maplibregl.Marker({
+    element: marker,
+    anchor: 'top',
+    pitchAlignment: 'viewport',
+    rotationAlignment: 'viewport',
+    subpixelPositioning: true,
+  })
+    .setLngLat([cat.lng, cat.lat])
+    .addTo(map)
+}
+
+async function initMockMapActors() {
+  const [{ objects }, { cats }] = await Promise.all([
+    fetchMockMapObjects(),
+    fetchMockCatActors(),
+  ])
+
+  objects.forEach(addMockBuildingMarker)
+  cats.forEach(addMockCatInfoMarker)
+  animatedModelLayer.setCatActors(cats)
+  animatedModelLayer.setAvatarPosition([MOCK_USER_AVATAR.lng, MOCK_USER_AVATAR.lat])
+}
+
+map.once('idle', () => {
+  initMockMapActors().catch((error) => {
+    console.warn('mock map actors failed to initialize:', error)
+  })
+})
+
 let userPos = null // 최근 GPS 위치 [lng, lat]
 let userPosAccuracy = Infinity // 최근 GPS 정확도(미터)
 let isFollowing = false // false = 전체 지도 시점, true = 마커 시점
@@ -150,7 +238,7 @@ function pitchForZoom(z) {
 }
 
 function markerLngLat() {
-  return userPos ?? KAIST_CENTER
+  return userPos ?? [MOCK_USER_AVATAR.lng, MOCK_USER_AVATAR.lat] ?? KAIST_CENTER
 }
 
 // 현재 궤도 상태를 카메라에 즉시 반영 (마커를 항상 화면 중심에 두고 바라봄)
@@ -171,6 +259,7 @@ map.on('moveend', () => {
 // GPS: 실시간 내 위치를 받아 마커를 이동
 // ─────────────────────────────────────────────
 function startPositionTracking() {
+  if (MOCK_MAP_MODE) return
   if (!('geolocation' in navigator)) return
   navigator.geolocation.watchPosition(
     (pos) => {
@@ -356,6 +445,13 @@ let lastTapPoint = null
 map.on('click', (e) => {
   // 스와이프/핀치 직후의 click만 무시 (실수 토글 방지)
   if (Date.now() - lastGestureTime < GESTURE_CLICK_IGNORE_MS) return
+  if (animatedModelLayer.isAvatarHit(e.point)) {
+    if (animatedModelLayer.playAvatarAnimation('excited_jump')) {
+      lastTapTime = 0
+      lastTapPoint = null
+      return
+    }
+  }
   const now = Date.now()
   const dt = now - lastTapTime
   const dist = lastTapPoint

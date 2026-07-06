@@ -192,7 +192,7 @@ const VERTEX_SHADER = `
 `
 
 const FRAGMENT_SHADER = `
-  precision mediump float;
+  precision highp float;
   varying vec2 v_uv;
   uniform sampler2D u_texture;
   void main() {
@@ -229,8 +229,27 @@ function createProgram(gl) {
   return program
 }
 
+function isPowerOfTwo(value) {
+  return (value & (value - 1)) === 0
+}
+
+function getTextureQuality(gl) {
+  const anisotropyExtension =
+    gl.getExtension('EXT_texture_filter_anisotropic') ||
+    gl.getExtension('MOZ_EXT_texture_filter_anisotropic') ||
+    gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic')
+
+  return {
+    anisotropyExtension,
+    maxAnisotropy: anisotropyExtension
+      ? gl.getParameter(anisotropyExtension.MAX_TEXTURE_MAX_ANISOTROPY_EXT)
+      : 1,
+    supportsNpotMipmaps: typeof gl.texStorage2D === 'function',
+  }
+}
+
 // 아이콘 텍스처를 로드하는 동안에는 1x1 투명 픽셀로 대체해 렌더 오류를 막는다.
-function loadTexture(gl, url) {
+function loadTexture(gl, url, textureQuality = getTextureQuality(gl)) {
   const texture = gl.createTexture()
   gl.bindTexture(gl.TEXTURE_2D, texture)
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
@@ -246,6 +265,20 @@ function loadTexture(gl, url) {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    if (
+      textureQuality.supportsNpotMipmaps ||
+      (isPowerOfTwo(image.naturalWidth) && isPowerOfTwo(image.naturalHeight))
+    ) {
+      gl.generateMipmap(gl.TEXTURE_2D)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+    }
+    if (textureQuality.anisotropyExtension) {
+      gl.texParameterf(
+        gl.TEXTURE_2D,
+        textureQuality.anisotropyExtension.TEXTURE_MAX_ANISOTROPY_EXT,
+        textureQuality.maxAnisotropy
+      )
+    }
     state.aspect = image.naturalHeight / image.naturalWidth
     state.ready = true
   }
@@ -279,6 +312,7 @@ class FlowerDecorationLayer {
   onAdd(map, gl) {
     this.map = map
     this.gl = gl
+    this.textureQuality = getTextureQuality(gl)
     this.program = createProgram(gl)
     this.locations = {
       corner: gl.getAttribLocation(this.program, 'a_corner'),
@@ -301,7 +335,9 @@ class FlowerDecorationLayer {
     // (인스턴스 렌더링으로 그룹당 그리기 호출이 1번뿐이라 텍스처 전환도 그룹 수만큼만 발생)
     const textureByUrl = new Map()
     this.groups = this.config.icons.map((icon) => {
-      if (!textureByUrl.has(icon.url)) textureByUrl.set(icon.url, loadTexture(gl, icon.url))
+      if (!textureByUrl.has(icon.url)) {
+        textureByUrl.set(icon.url, loadTexture(gl, icon.url, this.textureQuality))
+      }
       return { texture: textureByUrl.get(icon.url), flowers: [], instanceCount: 0 }
     })
     const groupByUrl = new Map(this.config.icons.map((icon, i) => [icon.url, this.groups[i]]))

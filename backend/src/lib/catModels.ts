@@ -60,7 +60,7 @@ export const colorArchetype = (dominantColor: string | null | undefined): string
  * pattern label > auto-detected coat color > generic default.
  */
 export const resolveModelKey = (cat: { model_key?: string | null; pattern?: string | null }, dominantColor?: string | null): string => {
-  if (isModelKey(cat.model_key)) return cat.model_key as string
+  if (isModelKey(cat.model_key)) return cat.model_key
   const byPattern = cat.pattern ? PATTERN_TO_MODEL[cat.pattern.toLowerCase()] : undefined
   if (byPattern) return byPattern
   const byColor = colorArchetype(dominantColor)

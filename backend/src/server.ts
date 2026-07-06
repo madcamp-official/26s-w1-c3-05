@@ -54,6 +54,8 @@ app.get('/', (_req, res) => {
       '/api/sightings/me',
       '/api/sightings/:photoId/confirm-cat',
       '/api/map/cats',
+      '/api/map/objects',
+      '/api/map/cat-actors',
       '/api/profile/me',
       '/api/rankings',
       '/api/admin/cats',

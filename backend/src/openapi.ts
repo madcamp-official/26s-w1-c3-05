@@ -45,6 +45,8 @@ export const openApiDocument = {
         properties: {
           id: { type: 'string', example: '1' },
           username: { type: 'string', example: 'catlover123' },
+          email: { type: 'string', nullable: true, example: 'catlover@example.com' },
+          authProvider: { type: 'string', example: 'local', enum: ['local', 'google', 'kakao', 'guest'] },
           nickname: { type: 'string', example: '고양이수집가' },
           profileImageUrl: { type: 'string', nullable: true, example: null },
         },
@@ -152,6 +154,50 @@ export const openApiDocument = {
           mainImageUrl: { type: 'string', nullable: true },
         },
       },
+      MapObject: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: '1' },
+          type: { type: 'string', example: 'library' },
+          name: { type: 'string', example: 'Central Library' },
+          lat: { type: 'number', example: 36.3727 },
+          lng: { type: 'number', example: 127.3602 },
+          distanceMeters: { type: 'number', example: 120.5 },
+          modelType: { type: 'string', example: 'building' },
+          modelKey: { type: 'string', example: 'library' },
+          modelUrl: { type: 'string', example: '/models/buildings/library.glb' },
+          modelScale: { type: 'number', example: 1 },
+          rotationY: { type: 'number', example: 0 },
+          radiusMeters: { type: 'number', example: 180 },
+          description: { type: 'string', nullable: true },
+        },
+      },
+      CatActor: {
+        type: 'object',
+        properties: {
+          catId: { type: 'string', example: '1' },
+          displayType: { type: 'string', enum: ['discovered_cat', 'undiscovered_recent'] },
+          name: { type: 'string', nullable: true, example: 'Mango' },
+          lat: { type: 'number', example: 36.3726 },
+          lng: { type: 'number', example: 127.3603 },
+          distanceMeters: { type: 'number', example: 42.25 },
+          zoneId: { type: 'string', nullable: true, example: '1' },
+          zoneName: { type: 'string', nullable: true, example: 'Central Library' },
+          zoneType: { type: 'string', nullable: true, example: 'library' },
+          surface: { type: 'string', example: 'roof', enum: ['ground', 'roof', 'bench', 'custom'] },
+          anchorKey: { type: 'string', nullable: true, example: 'roof_center' },
+          heightOffsetMeters: { type: 'number', example: 12 },
+          movementRadiusMeters: { type: 'number', example: 5 },
+          modelType: { type: 'string', example: 'cat' },
+          modelKey: { type: 'string', example: 'orange' },
+          modelUrl: { type: 'string', nullable: true, example: '/models/cats/orange.glb' },
+          modelScale: { type: 'number', nullable: true, example: 1 },
+          animationKey: { type: 'string', example: 'sit' },
+          animationStartedAt: { type: 'string', format: 'date-time' },
+          animationExpiresAt: { type: 'string', nullable: true, format: 'date-time' },
+          mainImageUrl: { type: 'string', nullable: true },
+        },
+      },
       AdminCat: {
         type: 'object',
         properties: {
@@ -245,6 +291,63 @@ export const openApiDocument = {
                 properties: {
                   username: { type: 'string', example: 'catlover123' },
                   password: { type: 'string', example: '12345678' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } } } },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/auth/guest': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Guest login',
+        responses: {
+          '201': { description: 'Created', content: { 'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } } } },
+        },
+      },
+    },
+    '/auth/google': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Google login',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['idToken'],
+                properties: {
+                  idToken: { type: 'string', example: 'google.id.token' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } } } },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/auth/kakao': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Kakao login',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['accessToken'],
+                properties: {
+                  accessToken: { type: 'string', example: 'kakao.access.token' },
                 },
               },
             },
@@ -474,6 +577,43 @@ export const openApiDocument = {
         ],
         responses: {
           '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { cats: { type: 'array', items: { $ref: '#/components/schemas/MapCat' } } } } } } },
+        },
+      },
+    },
+    '/map/objects': {
+      get: {
+        tags: ['Map'],
+        summary: 'Nearby map objects filtered by a distance band',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'lat', in: 'query', required: true, schema: { type: 'number', example: 36.3727 } },
+          { name: 'lng', in: 'query', required: true, schema: { type: 'number', example: 127.3602 } },
+          { name: 'minDistance', in: 'query', schema: { type: 'number', default: 30 } },
+          { name: 'maxDistance', in: 'query', schema: { type: 'number', default: 250 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 30, maximum: 100 } },
+          { name: 'modelType', in: 'query', schema: { type: 'string', default: 'building' } },
+        ],
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { objects: { type: 'array', items: { $ref: '#/components/schemas/MapObject' } } } } } } },
+          '400': { $ref: '#/components/responses/ValidationError' },
+        },
+      },
+    },
+    '/map/cat-actors': {
+      get: {
+        tags: ['Map'],
+        summary: 'Nearby cat actors with 3D anchor and animation state',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'lat', in: 'query', required: true, schema: { type: 'number', example: 36.3727 } },
+          { name: 'lng', in: 'query', required: true, schema: { type: 'number', example: 127.3602 } },
+          { name: 'radius', in: 'query', schema: { type: 'number', default: 500 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 30, maximum: 100 } },
+          { name: 'includeUndiscovered', in: 'query', schema: { type: 'string', enum: ['true', 'false'], default: 'false' } },
+        ],
+        responses: {
+          '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { cats: { type: 'array', items: { $ref: '#/components/schemas/CatActor' } } } } } } },
+          '400': { $ref: '#/components/responses/ValidationError' },
         },
       },
     },
