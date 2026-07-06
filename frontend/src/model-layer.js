@@ -12,6 +12,10 @@ const AVATAR_WORLD_HEADING = Math.PI
 
 // 줌에 따른 모델 크기: 카메라가 다가갈수록(줌인) 지도와 함께 커진다.
 // 지수 1이면 지도와 완전히 같은 비율, 낮출수록 완만해진다.
+// (지수를 1에 가깝게 올리면 꽃과 원근은 더 잘 맞지만, 팔로우 모드 줌 범위(16~20)에서
+// MODEL_MAX_ZOOM_SCALE 상한에 zoom 17 부근부터 걸려버려 모델이 계속 최대 확대 상태로
+// 고정되고, 그만큼 늘어난 텍스처/폴리곤이 뭉개져 보인다. 0.41은 이 상한에 걸리지 않는
+// 한도 내에서 고른 값이라 원복함 — 화질과 완전한 원근 일치는 이 구조에서 서로 트레이드오프.)
 const MODEL_BASE_ZOOM = 14.1 // 이 줌(전체 시점)에서 모델이 기준 크기(basePixelHeight)
 const MODEL_ZOOM_EXPONENT = 0.41
 const MODEL_MIN_ZOOM_SCALE = 0.35
