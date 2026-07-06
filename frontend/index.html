@@ -7,22 +7,522 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <link rel="preconnect" href="https://esm.sh" crossorigin />
-    <link rel="stylesheet" href="./src/style.css" />
+    <link rel="stylesheet" href="/src/style.css" />
     <title>캣치미</title>
   </head>
   <body>
     <section id="welcome" aria-label="캣치미 시작 화면">
       <div class="welcome-reference-shell">
-        <img class="welcome-reference" src="./src/assets/welcome-figma.png" alt="캣치미 시작 화면" />
-        <button class="welcome-hitbox welcome-hitbox--email" data-enter-app aria-label="이메일로 시작하기"></button>
-        <button class="welcome-hitbox welcome-hitbox--google" data-enter-app aria-label="Google로 계속하기"></button>
-        <button class="welcome-hitbox welcome-hitbox--apple" data-enter-app aria-label="Apple로 계속하기"></button>
-        <button class="welcome-hitbox welcome-hitbox--guest" data-enter-app aria-label="로그인하지 않고 둘러보기"></button>
+        <img class="welcome-reference" src="/src/assets/welcome-figma.png" alt="캣치미 시작 화면" />
+        <button class="welcome-hitbox welcome-hitbox--email" data-email-login aria-label="이메일로 시작하기"></button>
+        <button class="welcome-hitbox welcome-hitbox--google" data-social-login="google" aria-label="Google로 계속하기"></button>
+        <button class="welcome-hitbox welcome-hitbox--kakao" data-social-login="kakao" aria-label="카카오톡으로 계속하기">
+          <svg class="welcome-kakao-logo" viewBox="0 0 32 30" aria-hidden="true">
+            <path d="M16 2C8.27 2 2 6.94 2 13.04c0 3.96 2.65 7.43 6.63 9.38l-1.7 6.25a.55.55 0 0 0 .83.6l7.35-4.86c.3.02.6.03.89.03 7.73 0 14-4.94 14-11.4S23.73 2 16 2Z" />
+          </svg>
+          <span>카카오톡으로 계속하기</span>
+        </button>
+        <button class="welcome-hitbox welcome-hitbox--guest" data-guest-entry aria-label="로그인하지 않고 둘러보기"></button>
+        <p id="welcome-auth-message" class="auth-message auth-message--welcome" role="alert" hidden></p>
       </div>
     </section>
 
+    <section id="email-auth" class="email-auth" aria-labelledby="email-auth-title" hidden>
+      <div class="email-auth-decoration email-auth-decoration--left" aria-hidden="true">✿</div>
+      <div class="email-auth-decoration email-auth-decoration--right" aria-hidden="true">✿</div>
+
+      <header class="email-auth-header">
+        <button id="email-auth-back" class="email-auth-back" type="button" aria-label="이전 화면으로 돌아가기">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m15 5-7 7 7 7" />
+          </svg>
+        </button>
+        <span class="email-auth-step" aria-live="polite">로그인</span>
+      </header>
+
+      <main class="email-auth-main">
+        <div class="email-auth-paw" aria-hidden="true">🐾</div>
+
+        <div class="email-auth-copy">
+          <h1 id="email-auth-title">이메일로 시작하기</h1>
+          <p id="email-auth-description">이메일과 비밀번호를 입력해주세요.</p>
+        </div>
+
+        <form id="email-step-form" class="email-auth-form">
+          <label for="email-input">이메일</label>
+          <div class="email-auth-input-wrap">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3.5 6.5h17v11h-17zM4 7l8 6 8-6" />
+            </svg>
+            <input
+              id="email-input"
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="email"
+              placeholder="example@email.com"
+              required
+            />
+          </div>
+          <label for="login-password">비밀번호</label>
+          <div class="email-auth-input-wrap">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 10h12v10H6zM8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" />
+            </svg>
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              minlength="6"
+              placeholder="비밀번호를 입력해주세요"
+              required
+            />
+          </div>
+          <p id="email-auth-message" class="auth-message" role="alert" hidden></p>
+          <button class="email-auth-submit" type="submit">로그인</button>
+          <button id="open-signup" class="email-auth-resend" type="button">처음이라면 회원가입</button>
+        </form>
+      </main>
+    </section>
+
+    <section id="signup" class="signup-screen" aria-labelledby="signup-title" hidden>
+      <div class="signup-decoration signup-decoration--top" aria-hidden="true">🐾</div>
+      <div class="signup-decoration signup-decoration--bottom" aria-hidden="true">✿</div>
+
+      <header class="signup-header">
+        <button id="signup-back" class="email-auth-back" type="button" aria-label="시작 화면으로 돌아가기">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m15 5-7 7 7 7" />
+          </svg>
+        </button>
+        <span class="signup-badge">마지막 단계</span>
+      </header>
+
+      <main class="signup-main">
+        <div class="signup-copy">
+          <span class="signup-paw" aria-hidden="true">🐾</span>
+          <h1 id="signup-title">반가워요!</h1>
+          <p>캣치미에서 사용할 정보를 입력해주세요.</p>
+        </div>
+
+        <form id="signup-form" class="signup-form">
+          <label for="login-id">이메일</label>
+          <input
+            id="login-id"
+            name="email"
+            type="email"
+            inputmode="email"
+            autocomplete="username"
+            minlength="3"
+            maxlength="50"
+            placeholder="example@email.com"
+            required
+          />
+
+          <label for="signup-password">비밀번호</label>
+          <input
+            id="signup-password"
+            name="password"
+            type="password"
+            autocomplete="new-password"
+            minlength="6"
+            placeholder="6자 이상 입력해주세요"
+            required
+          />
+
+          <label for="display-name">사용자 이름</label>
+          <input
+            id="display-name"
+            name="display-name"
+            type="text"
+            autocomplete="nickname"
+            maxlength="20"
+            placeholder="서비스에 표시될 이름"
+            required
+          />
+
+          <p id="signup-auth-message" class="auth-message" role="alert" hidden></p>
+          <button class="signup-submit" type="submit">회원가입 완료</button>
+        </form>
+      </main>
+    </section>
+
+    <section id="capture-result" class="capture-result" aria-live="polite" hidden>
+      <div class="capture-result-panel capture-result-panel--failure" data-capture-panel="failure" hidden>
+        <button class="capture-result-close" type="button" data-capture-close aria-label="결과 화면 닫기">✕</button>
+        <div class="capture-focus-corners" aria-hidden="true"></div>
+        <div class="capture-failure-icon" aria-hidden="true">
+          <span>🐾</span>
+        </div>
+        <div class="capture-result-copy">
+          <h1>고양이를 감지하지 못했어요</h1>
+          <p>고양이가 화면 안에 잘 보이도록 다시 찍어주세요.</p>
+        </div>
+        <div class="capture-tip-card">
+          <div class="capture-tip-title"><span></span><strong>💡 tip</strong><span></span></div>
+          <p>🐱 고양이와 조금 더 가까이 가보세요</p>
+          <p>🐈 얼굴이나 몸이 잘 보이게 해주세요</p>
+          <p>ϟ 어두우면 플래시를 켜보세요</p>
+        </div>
+        <div class="capture-result-actions capture-result-actions--stack">
+          <button class="capture-primary" type="button" data-capture-retake>📷 다시 찍기</button>
+        </div>
+      </div>
+
+      <div class="capture-result-panel capture-result-panel--existing" data-capture-panel="existing" hidden>
+        <button class="capture-result-close" type="button" data-capture-close aria-label="결과 화면 닫기">✕</button>
+        <div class="capture-result-copy capture-result-copy--top">
+          <span class="capture-result-kicker">도감에서 찾았어요!</span>
+          <h1>치즈를 다시 만났어요</h1>
+          <p>KAIST 자연과학관 근처에서 자주 만나는 친구예요.</p>
+        </div>
+        <div class="capture-photo-card">
+          <div class="capture-photo-scene" data-capture-photo>
+            <span class="capture-photo-cat" aria-hidden="true">🐈</span>
+          </div>
+          <span class="capture-match-badge">일치율 96%</span>
+        </div>
+        <article class="capture-cat-card">
+          <div class="capture-cat-avatar" aria-hidden="true">🐱</div>
+          <div>
+            <h2>치즈 <span>🐾</span></h2>
+            <p>밝은 주황색 무늬가 매력적인 고양이</p>
+          </div>
+          <strong>도감 #01</strong>
+        </article>
+        <div class="capture-found-info">
+          <span>📍 자연과학관 근처</span>
+          <span>📅 오늘 다시 만남</span>
+        </div>
+        <div class="capture-result-actions">
+          <button class="capture-secondary" type="button" data-capture-close>지도로 돌아가기</button>
+          <button class="capture-primary" type="button" data-capture-close>도감에서 보기</button>
+        </div>
+      </div>
+
+      <div class="capture-result-panel capture-result-panel--new" data-capture-panel="new" hidden>
+        <button class="capture-result-close" type="button" data-capture-close aria-label="결과 화면 닫기">✕</button>
+        <div class="capture-result-copy capture-result-copy--top">
+          <h1>새로운 고양이를 발견했어요!</h1>
+          <p>아직 도감에 없는 새로운 친구예요.</p>
+        </div>
+        <div class="capture-photo-card capture-photo-card--new">
+          <span class="capture-flower" aria-hidden="true">🌼</span>
+          <div class="capture-photo-scene" data-capture-photo>
+            <span class="capture-photo-cat" aria-hidden="true">🐈</span>
+          </div>
+          <span class="capture-leaf" aria-hidden="true">🌿</span>
+        </div>
+        <div class="capture-save-copy">
+          <span>· · ·　🐾　· · ·</span>
+          <h2>이 고양이를 도감에 등록할까요?</h2>
+          <p>등록하면 이름을 짓고 새로운 친구로 기록할 수 있어요.</p>
+        </div>
+        <div class="capture-result-actions">
+          <button class="capture-secondary" type="button" data-capture-retake>다시 찍기</button>
+          <button class="capture-primary" type="button" data-capture-close>등록하기</button>
+        </div>
+      </div>
+
+      <div class="capture-result-panel capture-result-panel--candidates" data-capture-panel="candidates" hidden>
+        <button class="capture-result-close" type="button" data-capture-close aria-label="결과 화면 닫기">✕</button>
+        <div class="capture-result-copy">
+          <h1>어떤 고양이인가요?</h1>
+          <p>비슷한 고양이가 여러 마리 보여요.<br />가장 가까운 고양이를 골라주세요.</p>
+        </div>
+        <div class="capture-photo-card capture-photo-card--candidates">
+          <div class="capture-photo-scene" data-capture-photo>
+            <span class="capture-photo-cat" aria-hidden="true">🐈</span>
+          </div>
+        </div>
+        <form class="capture-candidate-list" data-capture-candidate-form>
+          <label class="capture-candidate-item">
+            <span class="capture-candidate-avatar" aria-hidden="true">🐱</span>
+            <span class="capture-candidate-info">
+              <strong>치즈</strong>
+              <span>📍 자연과학관 근처 · 82%</span>
+            </span>
+            <input type="radio" name="cat-candidate" value="cheese" />
+            <span class="capture-candidate-radio" aria-hidden="true"></span>
+          </label>
+          <label class="capture-candidate-item">
+            <span class="capture-candidate-avatar" aria-hidden="true">🐱</span>
+            <span class="capture-candidate-info">
+              <strong>태비</strong>
+              <span>📍 학생회관 뒤편 · 76%</span>
+            </span>
+            <input type="radio" name="cat-candidate" value="tabby" />
+            <span class="capture-candidate-radio" aria-hidden="true"></span>
+          </label>
+          <label class="capture-candidate-item">
+            <span class="capture-candidate-avatar" aria-hidden="true">🐱</span>
+            <span class="capture-candidate-info">
+              <strong>삼색이</strong>
+              <span>📍 도서관 앞 · 68%</span>
+            </span>
+            <input type="radio" name="cat-candidate" value="calico" />
+            <span class="capture-candidate-radio" aria-hidden="true"></span>
+          </label>
+          <label class="capture-candidate-item capture-candidate-item--muted">
+            <span class="capture-candidate-avatar capture-candidate-avatar--muted" aria-hidden="true">🐾</span>
+            <span class="capture-candidate-info">
+              <strong>처음 보는 고양이에요</strong>
+              <span>이 고양이는 목록에 없어요</span>
+            </span>
+            <input type="radio" name="cat-candidate" value="new-cat" />
+            <span class="capture-candidate-radio" aria-hidden="true"></span>
+          </label>
+          <label class="capture-candidate-item capture-candidate-item--muted">
+            <span class="capture-candidate-avatar capture-candidate-avatar--muted" aria-hidden="true">❓</span>
+            <span class="capture-candidate-info">
+              <strong>잘 모르겠어요</strong>
+              <span>AI가 다시 확인해볼게요</span>
+            </span>
+            <input type="radio" name="cat-candidate" value="unsure" />
+            <span class="capture-candidate-radio" aria-hidden="true"></span>
+          </label>
+        </form>
+        <div class="capture-result-actions capture-result-actions--stack">
+          <button class="capture-primary" type="button" data-capture-close>선택 완료 🐾</button>
+          <button class="capture-secondary" type="button" data-capture-retake>📷 다시 찍기</button>
+        </div>
+      </div>
+
+      <nav id="capture-preview-switcher" class="capture-preview-switcher" aria-label="촬영 결과 미리보기" hidden>
+        <button type="button" data-preview-result="failure">감지 실패</button>
+        <button type="button" data-preview-result="existing">기존 고양이</button>
+        <button type="button" data-preview-result="new">새 고양이</button>
+        <button type="button" data-preview-result="candidates">후보 선택</button>
+      </nav>
+    </section>
+
+    <!-- 개인 계정 도감 (캣집사 프로필) -->
+    <section id="profile-dex" class="profile-dex" aria-labelledby="profile-dex-name" hidden>
+      <header class="profile-dex-header">
+        <button class="profile-dex-icon-btn" type="button" data-profile-close aria-label="이전 화면으로 돌아가기">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+        </button>
+      </header>
+
+      <main class="profile-dex-main">
+        <div class="profile-dex-identity">
+          <span class="profile-dex-avatar" aria-hidden="true">👩‍🌾</span>
+          <div class="profile-dex-name-block">
+            <h1 id="profile-dex-name">캣집사 <span aria-hidden="true">🐾</span></h1>
+            <p>KAIST 고양이 탐험가</p>
+          </div>
+        </div>
+
+        <div class="profile-dex-stats">
+          <div class="profile-dex-stat">
+            <span>발견한 고양이</span>
+            <strong>12</strong>
+          </div>
+          <div class="profile-dex-stat">
+            <span>찍은 사진</span>
+            <strong>48</strong>
+          </div>
+          <div class="profile-dex-stat">
+            <span>방문한 지역</span>
+            <strong>7</strong>
+          </div>
+        </div>
+
+        <section class="profile-dex-collection" aria-label="내 도감">
+          <div class="profile-dex-collection-head">
+            <h2>내 도감</h2>
+            <span class="profile-dex-progress">12 / 50</span>
+          </div>
+          <div class="profile-dex-grid">
+            <button class="dex-card" type="button" data-open-detail>
+              <span class="dex-card-photo"><span aria-hidden="true">🐈</span></span>
+              <strong>치즈</strong>
+            </button>
+            <button class="dex-card" type="button">
+              <span class="dex-card-photo dex-card-photo--tabby"><span aria-hidden="true">🐈</span></span>
+              <strong>테비</strong>
+            </button>
+            <button class="dex-card" type="button">
+              <span class="dex-card-photo dex-card-photo--calico"><span aria-hidden="true">🐈</span></span>
+              <strong>삼색이</strong>
+            </button>
+            <button class="dex-card" type="button">
+              <span class="dex-card-photo dex-card-photo--black"><span aria-hidden="true">🐈‍⬛</span></span>
+              <strong>김동이</strong>
+            </button>
+            <div class="dex-card dex-card--locked" aria-hidden="true">
+              <span class="dex-card-photo"><span>🐈</span></span>
+              <strong>???</strong>
+            </div>
+            <div class="dex-card dex-card--locked" aria-hidden="true">
+              <span class="dex-card-photo"><span>🐈</span></span>
+              <strong>???</strong>
+            </div>
+          </div>
+        </section>
+
+        <nav class="profile-dex-menu" aria-label="내 계정 메뉴">
+          <button class="profile-dex-menu-item" type="button">
+            <span class="profile-dex-menu-icon" aria-hidden="true">🗓️</span>
+            <span>방문 기록</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+          </button>
+          <button class="profile-dex-menu-item" type="button">
+            <span class="profile-dex-menu-icon" aria-hidden="true">⭐</span>
+            <span>즐겨찾기</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+          </button>
+        </nav>
+      </main>
+    </section>
+
+    <!-- 실제 카메라 영상 위에 표시되는 뷰파인더 -->
+    <section id="camera-view" class="camera-view" aria-label="고양이 촬영 화면" hidden>
+      <video id="camera-stream" class="camera-stream" autoplay playsinline muted></video>
+      <div class="camera-scene" data-camera-fallback aria-hidden="true"></div>
+
+      <button id="camera-view-close" class="camera-view-close" type="button" aria-label="카메라 닫기">✕</button>
+
+      <div class="camera-viewfinder" aria-hidden="true">
+        <span class="camera-corner camera-corner--tl"></span>
+        <span class="camera-corner camera-corner--tr"></span>
+        <span class="camera-corner camera-corner--bl"></span>
+        <span class="camera-corner camera-corner--br"></span>
+      </div>
+
+      <div class="camera-message">
+        <p>고양이가 화면 안에 오도록<br />가까이 다가가보세요!</p>
+      </div>
+
+      <p id="camera-status" class="camera-status" role="status" hidden></p>
+
+      <div class="camera-controls">
+        <button id="camera-shutter" class="camera-shutter" type="button" aria-label="사진 촬영">
+          <span aria-hidden="true"></span>
+        </button>
+      </div>
+
+      <canvas id="camera-canvas" hidden></canvas>
+    </section>
+
+    <!-- 고양이 상세 (도감에서 고양이를 누르면 나오는 화면) -->
+    <section id="cat-detail" class="cat-detail" aria-labelledby="cat-detail-name" hidden>
+      <header class="cat-detail-header">
+        <button class="cat-detail-icon-btn" type="button" data-detail-close aria-label="도감으로 돌아가기">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+        </button>
+        <button class="cat-detail-fav" type="button" aria-pressed="true" aria-label="즐겨찾기">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20S4 14.5 4 9.2A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 8 2.2C20 14.5 12 20 12 20z" /></svg>
+        </button>
+      </header>
+
+      <main class="cat-detail-main">
+        <div class="cat-detail-photo">
+          <div class="capture-photo-scene" data-detail-photo>
+            <span class="capture-photo-cat" aria-hidden="true">🐈</span>
+          </div>
+          <span class="cat-detail-count" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m12 3 2.6 5.6 6.1.7-4.5 4.1 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.3l6.1-.7z" /></svg>
+            1/3
+          </span>
+        </div>
+
+        <div class="cat-detail-identity">
+          <div class="cat-detail-name-block">
+            <h1 id="cat-detail-name">치즈 <span aria-hidden="true">🐾</span></h1>
+            <p>KAIST 자연과학관 근처</p>
+            <p class="cat-detail-date">2024.06.01 발견</p>
+          </div>
+          <button class="cat-detail-3d" type="button">
+            <span class="cat-detail-3d-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3 4 7v10l8 4 8-4V7z" /><path d="m4 7 8 4 8-4M12 11v10" /></svg>
+            </span>
+            <span>고양이를 3D로 보기</span>
+            <svg class="cat-detail-3d-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+          </button>
+        </div>
+
+        <section class="cat-detail-section" aria-labelledby="cat-detail-record-title">
+          <h2 id="cat-detail-record-title">기록</h2>
+          <div class="cat-detail-record">
+            <p>밝은 주황색 무늬가 매력적인 고양이에요.<br />사람을 잘 따르고 애교가 많아요!</p>
+            <span class="cat-detail-record-leaf" aria-hidden="true">🌿</span>
+          </div>
+        </section>
+
+        <section class="cat-detail-section" aria-labelledby="cat-detail-place-title">
+          <h2 id="cat-detail-place-title">발견한 장소</h2>
+          <div class="cat-detail-map">
+            <span class="cat-detail-map-pin" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 22c5-5 7-8.2 7-11a7 7 0 1 0-14 0c0 2.8 2 6 7 11z" /><circle cx="12" cy="11" r="2.6" fill="#fff" stroke="none" /></svg>
+            </span>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <!-- 내 고양이 메뉴 (오른쪽에서 나오는 사이드바) -->
+    <div id="cat-menu" hidden>
+      <button class="cat-menu-backdrop" type="button" data-menu-close aria-label="메뉴 닫기"></button>
+      <aside class="cat-menu-panel" aria-label="내 고양이 메뉴">
+        <header class="cat-menu-header">
+          <h2>내 고양이 메뉴</h2>
+          <button class="cat-menu-close" type="button" data-menu-close aria-label="메뉴 닫기">✕</button>
+        </header>
+
+        <div class="cat-menu-greeting">
+          <span class="cat-menu-avatar" aria-hidden="true">👩‍🌾</span>
+          <p>캣집사님,<br /><strong>안녕하세요! <span aria-hidden="true">🐾</span></strong></p>
+          <span class="cat-menu-leaf" aria-hidden="true">🌿</span>
+        </div>
+
+        <button class="cat-menu-feature" type="button" data-open-profile data-menu-close>
+          <span class="cat-menu-feature-cat" aria-hidden="true">🐈</span>
+          <span class="cat-menu-feature-copy">
+            <span>발견한 고양이</span>
+            <strong>12마리</strong>
+          </span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+        </button>
+
+        <nav class="cat-menu-list" aria-label="계정 메뉴">
+          <button class="cat-menu-item" type="button">
+            <span class="cat-menu-item-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9.4 9.3a2.7 2.7 0 0 1 5.2.9c0 1.8-2.6 2.4-2.6 4M12 17.2h.01" /></svg>
+            </span>
+            <span>도움말</span>
+            <svg class="cat-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+          </button>
+          <button class="cat-menu-item" type="button">
+            <span class="cat-menu-item-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1" /><path d="M19.4 13a7.7 7.7 0 0 0 0-2l1.8-1.4-1.9-3.2-2.1.8a7.4 7.4 0 0 0-1.7-1l-.3-2.2h-3.8l-.3 2.2a7.4 7.4 0 0 0-1.7 1l-2.1-.8L4.8 7.6 6.6 9a7.7 7.7 0 0 0 0 2l-1.8 1.4 1.9 3.2 2.1-.8c.5.4 1.1.7 1.7 1l.3 2.2h3.8l.3-2.2c.6-.3 1.2-.6 1.7-1l2.1.8 1.9-3.2L19.4 13z" /></svg>
+            </span>
+            <span>설정</span>
+            <svg class="cat-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+          </button>
+        </nav>
+
+        <div class="cat-menu-footer">
+          <span class="cat-menu-footer-flower" aria-hidden="true">🌸</span>
+          <button class="cat-menu-logout" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5H6v14h9M10 12h9m0 0-3-3m3 3-3 3" /></svg>
+            로그아웃
+          </button>
+          <span class="cat-menu-footer-leaf" aria-hidden="true">🌿</span>
+        </div>
+      </aside>
+    </div>
+
     <div id="map"></div>
     <div id="hint">더블탭: 시점 전환 · 마커 시점에서 한 손가락: 회전 · 두 손가락: 확대</div>
+
+    <!-- 메뉴 열기 버튼 (오른쪽 위) -->
+    <button id="menu-btn" type="button" data-menu-open aria-label="내 고양이 메뉴 열기">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16" stroke="#2b9e7f" stroke-width="2" stroke-linecap="round" />
+      </svg>
+    </button>
 
     <!-- 카메라 실행 버튼 (아래 중앙) -->
     <button id="camera-btn" aria-label="카메라 실행">
@@ -97,6 +597,274 @@
       </section>
     </div>
 
-    <script type="module" src="./src/main.js"></script>
+    <script type="module" src="/src/auth-ui.js"></script>
+    <script>
+      (() => {
+        const result = document.querySelector('#capture-result')
+        const panels = [...document.querySelectorAll('[data-capture-panel]')]
+        const switcher = document.querySelector('#capture-preview-switcher')
+
+        function showCaptureResult(state, imageUrl) {
+          panels.forEach((panel) => {
+            panel.hidden = panel.dataset.capturePanel !== state
+          })
+          result.hidden = false
+          result.dataset.state = state
+
+          document.querySelectorAll('[data-capture-photo]').forEach((photo) => {
+            photo.style.backgroundImage = imageUrl
+              ? `linear-gradient(rgba(235, 247, 220, 0.08), rgba(235, 247, 220, 0.08)), url("${imageUrl}")`
+              : ''
+            photo.classList.toggle('has-photo', Boolean(imageUrl))
+          })
+
+          document.querySelectorAll('[data-preview-result]').forEach((button) => {
+            button.classList.toggle('is-active', button.dataset.previewResult === state)
+          })
+        }
+
+        function closeCaptureResult() {
+          result.hidden = true
+          if (window.location.hash.startsWith('#capture-')) {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search)
+          }
+        }
+
+        document.querySelectorAll('[data-capture-close]').forEach((button) => {
+          button.addEventListener('click', closeCaptureResult)
+        })
+
+        document.querySelectorAll('[data-capture-retake]').forEach((button) => {
+          button.addEventListener('click', () => {
+            closeCaptureResult()
+            document.querySelector('#camera-input')?.click()
+          })
+        })
+
+        document.querySelectorAll('[data-preview-result]').forEach((button) => {
+          button.addEventListener('click', () => showCaptureResult(button.dataset.previewResult))
+        })
+
+        window.showCaptureResult = showCaptureResult
+
+        const previewStates = {
+          '#capture-failure': 'failure',
+          '#capture-existing': 'existing',
+          '#capture-new': 'new',
+          '#capture-candidates': 'candidates',
+          '#capture-preview': 'failure',
+        }
+        const previewState = previewStates[window.location.hash]
+        if (previewState) {
+          document.querySelector('#welcome').hidden = true
+          document.querySelector('#signup').hidden = true
+          showCaptureResult(previewState)
+          switcher.hidden = window.location.hash !== '#capture-preview'
+        }
+      })()
+    </script>
+    <script>
+      (() => {
+        const profile = document.querySelector('#profile-dex')
+        if (!profile) return
+
+        function closeProfile() {
+          profile.hidden = true
+          if (window.location.hash === '#profile') {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search)
+          }
+        }
+
+        profile.querySelectorAll('[data-profile-close]').forEach((button) => {
+          button.addEventListener('click', closeProfile)
+        })
+
+        window.showProfileDex = () => {
+          profile.hidden = false
+        }
+
+        // 도감 카드 → 고양이 상세 화면
+        const detail = document.querySelector('#cat-detail')
+        if (detail) {
+          profile.querySelectorAll('[data-open-detail]').forEach((card) => {
+            card.addEventListener('click', () => {
+              detail.hidden = false
+            })
+          })
+          detail.querySelectorAll('[data-detail-close]').forEach((button) => {
+            button.addEventListener('click', () => {
+              detail.hidden = true
+              if (window.location.hash === '#detail') {
+                window.history.replaceState(null, '', window.location.pathname + window.location.search)
+              }
+            })
+          })
+        }
+
+        if (window.location.hash === '#profile') {
+          document.querySelector('#welcome').hidden = true
+          document.querySelector('#signup').hidden = true
+          profile.hidden = false
+        }
+
+        if (window.location.hash === '#detail' && detail) {
+          document.querySelector('#welcome').hidden = true
+          document.querySelector('#signup').hidden = true
+          detail.hidden = false
+        }
+      })()
+    </script>
+    <script>
+      (() => {
+        const menu = document.querySelector('#cat-menu')
+        if (!menu) return
+
+        function openMenu() {
+          menu.hidden = false
+          // 다음 프레임에 클래스를 붙여 슬라이드 인 트랜지션이 재생되게 한다.
+          requestAnimationFrame(() => menu.classList.add('is-open'))
+        }
+
+        function closeMenu() {
+          menu.classList.remove('is-open')
+          const done = () => {
+            menu.hidden = true
+            menu.removeEventListener('transitionend', onEnd)
+          }
+          let settled = false
+          const onEnd = (event) => {
+            if (event.target === menu.querySelector('.cat-menu-panel') && !settled) {
+              settled = true
+              done()
+            }
+          }
+          menu.addEventListener('transitionend', onEnd)
+          // 트랜지션 이벤트가 누락돼도 확실히 닫히도록 백업 타이머를 둔다.
+          window.setTimeout(() => {
+            if (!settled) {
+              settled = true
+              menu.removeEventListener('transitionend', onEnd)
+              menu.hidden = true
+            }
+          }, 360)
+          if (window.location.hash === '#menu') {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search)
+          }
+        }
+
+        document.querySelectorAll('[data-menu-open]').forEach((button) => {
+          button.addEventListener('click', openMenu)
+        })
+        menu.querySelectorAll('[data-menu-close]').forEach((button) => {
+          button.addEventListener('click', closeMenu)
+        })
+        menu.querySelectorAll('[data-open-profile]').forEach((button) => {
+          button.addEventListener('click', () => {
+            window.showProfileDex?.()
+          })
+        })
+
+        if (window.location.hash === '#menu') {
+          document.querySelector('#welcome').hidden = true
+          document.querySelector('#signup').hidden = true
+          menu.hidden = false
+          requestAnimationFrame(() => menu.classList.add('is-open'))
+        }
+      })()
+    </script>
+    <script>
+      (() => {
+        const camera = document.querySelector('#camera-view')
+        if (!camera) return
+        const video = document.querySelector('#camera-stream')
+        const fallback = document.querySelector('[data-camera-fallback]')
+        const status = document.querySelector('#camera-status')
+        const shutter = document.querySelector('#camera-shutter')
+        const canvas = document.querySelector('#camera-canvas')
+        const cameraInput = document.querySelector('#camera-input')
+        let activeStream = null
+
+        function stopCameraStream() {
+          activeStream?.getTracks().forEach((track) => track.stop())
+          activeStream = null
+          video.srcObject = null
+        }
+
+        function showFallback(message) {
+          fallback.hidden = false
+          status.hidden = false
+          status.textContent = message
+        }
+
+        window.showCameraView = async () => {
+          camera.hidden = false
+          status.hidden = true
+          fallback.hidden = false
+
+          if (!navigator.mediaDevices?.getUserMedia) {
+            showFallback('실시간 카메라를 지원하지 않아요. 촬영 버튼을 누르면 기본 카메라가 열려요.')
+            return
+          }
+
+          try {
+            stopCameraStream()
+            activeStream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+              },
+            })
+            video.srcObject = activeStream
+            await video.play()
+            fallback.hidden = true
+          } catch (error) {
+            console.warn('실시간 카메라를 열지 못했습니다.', error)
+            showFallback('카메라 권한이 필요해요. 촬영 버튼을 누르면 기본 카메라를 열 수 있어요.')
+          }
+        }
+
+        window.hideCameraView = () => {
+          stopCameraStream()
+          camera.hidden = true
+        }
+
+        document.querySelector('#camera-view-close').addEventListener('click', () => {
+          window.hideCameraView()
+        })
+
+        shutter.addEventListener('click', () => {
+          if (!activeStream || !video.videoWidth || !video.videoHeight) {
+            window.hideCameraView()
+            cameraInput?.click()
+            return
+          }
+
+          shutter.disabled = true
+          camera.classList.add('is-capturing')
+          canvas.width = video.videoWidth
+          canvas.height = video.videoHeight
+          canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+
+          canvas.toBlob((blob) => {
+            shutter.disabled = false
+            camera.classList.remove('is-capturing')
+            if (!blob) return
+
+            const file = new File([blob], `catchme-${Date.now()}.jpg`, { type: 'image/jpeg' })
+            window.hideCameraView()
+            window.dispatchEvent(new CustomEvent('catchme:camera-captured', { detail: { file } }))
+          }, 'image/jpeg', 0.92)
+        })
+
+        if (window.location.hash === '#camera') {
+          document.querySelector('#welcome').hidden = true
+          document.querySelector('#signup').hidden = true
+          window.showCameraView()
+        }
+      })()
+    </script>
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>

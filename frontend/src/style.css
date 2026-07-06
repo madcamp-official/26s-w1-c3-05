@@ -248,11 +248,13 @@ body {
 
 .welcome-reference-shell {
   position: relative;
-  height: 100vh;
+  width: min(100vw, calc(100vh * 640 / 1385));
+  width: min(100vw, calc(100svh * 640 / 1385));
+  height: auto;
   aspect-ratio: 640 / 1385;
-  max-width: 100vw;
   overflow: hidden;
   background: #f4fbed;
+  container-type: inline-size;
 }
 
 .welcome-reference {
@@ -290,19 +292,37 @@ body {
 
 .welcome-hitbox--email { top: 56.39%; }
 .welcome-hitbox--google { top: 65.56%; }
-.welcome-hitbox--apple { top: 74.73%; }
+.welcome-hitbox--kakao {
+  top: 74.73%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 22%;
+  background: #fee500;
+  color: rgba(0, 0, 0, 0.85);
+  box-shadow: 0 3px 8px rgba(25, 85, 50, 0.13);
+  font: 700 clamp(14px, 4.6cqw, 20px)/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  letter-spacing: -0.025em;
+}
+
+.welcome-kakao-logo {
+  position: absolute;
+  left: 15%;
+  top: 50%;
+  width: clamp(18px, 6.3cqw, 28px);
+  height: auto;
+  fill: rgba(0, 0, 0, 0.85);
+  flex: none;
+  transform: translateY(-50%);
+}
 .welcome-hitbox--guest { top: 90.83%; height: 4.5%; }
 
 @media (max-width: 600px) {
-  #welcome { place-items: start center; }
+  #welcome { place-items: center; }
 
   .welcome-reference-shell {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    max-width: none;
-    aspect-ratio: auto;
+    position: relative;
+    inset: auto;
   }
 
   .welcome-reference {
@@ -321,29 +341,1122 @@ body {
 
   .welcome-hitbox--email { top: 56.39%; }
   .welcome-hitbox--google { top: 65.56%; }
-  .welcome-hitbox--apple { top: 74.73%; }
+  .welcome-hitbox--kakao { top: 74.73%; }
   .welcome-hitbox--guest { top: 90.83%; height: 4.5%; }
 }
 
 /* 실제 UI 버전: 원본에서는 장식만 가져오고 텍스트와 컨트롤은 선명하게 렌더링한다. */
 #welcome {
-  background: #fff;
-  overflow-x: hidden;
-  overflow-y: auto;
+  background: #f4fbed;
+  overflow: hidden;
   overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
 }
 
 #welcome::-webkit-scrollbar { display: none; }
 
-@media (max-width: 600px) {
-  .welcome-reference-shell {
-    position: relative;
-    inset: auto;
-    width: 100%;
-    height: 216.40625vw;
-    flex: none;
+#welcome[hidden] {
+  display: none;
+}
+
+/* 이메일 로그인 — 이메일과 인증코드까지만 담당하는 2단계 화면 */
+.email-auth {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  box-sizing: border-box;
+  min-height: 100%;
+  overflow: hidden;
+  padding: calc(18px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+  color: #155f3c;
+  background:
+    radial-gradient(circle at 9% 17%, rgba(255, 255, 255, 0.88) 0 52px, transparent 53px),
+    radial-gradient(circle at 92% 84%, rgba(208, 239, 170, 0.68) 0 84px, transparent 85px),
+    linear-gradient(160deg, #f8fff4 0%, #eef9e8 58%, #f7f8df 100%);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+.email-auth[hidden],
+.email-auth-form[hidden] {
+  display: none;
+}
+
+.email-auth-header {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 430px);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.email-auth-back {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(25, 111, 67, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #147347;
+  box-shadow: 0 3px 10px rgba(38, 104, 65, 0.1);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.email-auth-back svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.email-auth-step {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  color: #55866c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.email-auth-main {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 430px);
+  min-height: calc(100% - 44px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 18px 0 68px;
+}
+
+.email-auth-paw {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 22px;
+  border-radius: 25px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 22px rgba(40, 111, 68, 0.12);
+  display: grid;
+  place-items: center;
+  font-size: 36px;
+  transform: rotate(-5deg);
+}
+
+.email-auth-copy {
+  margin-bottom: 34px;
+  text-align: center;
+}
+
+.email-auth-copy h1 {
+  margin: 0 0 12px;
+  color: #086d3d;
+  font-size: clamp(27px, 8vw, 36px);
+  line-height: 1.15;
+  letter-spacing: -0.05em;
+}
+
+.email-auth-copy p {
+  margin: 0;
+  color: #5d846e;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.email-auth-form {
+  width: 100%;
+}
+
+.email-auth-form label {
+  display: block;
+  margin: 0 0 9px 4px;
+  color: #245f43;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.email-auth-input-wrap {
+  position: relative;
+}
+
+.email-auth-input-wrap + label {
+  margin-top: 16px;
+}
+
+.email-auth-input-wrap svg {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: #4c8b68;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.email-auth-form input {
+  width: 100%;
+  height: 60px;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(40, 117, 72, 0.16);
+  border-radius: 18px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.94);
+  color: #174c34;
+  box-shadow: 0 5px 16px rgba(35, 98, 61, 0.09);
+  font: 600 16px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.email-auth-input-wrap input {
+  padding: 0 18px 0 54px;
+}
+
+.email-auth-form input:focus {
+  border-color: #22935b;
+  box-shadow: 0 0 0 4px rgba(34, 147, 91, 0.1), 0 5px 16px rgba(35, 98, 61, 0.09);
+}
+
+.email-auth-submit {
+  width: 100%;
+  height: 58px;
+  margin-top: 18px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #168252 0%, #087342 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(12, 104, 58, 0.22);
+  font: 750 16px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  cursor: pointer;
+}
+
+.email-auth-submit:active,
+.email-auth-back:active,
+.email-auth-resend:active {
+  transform: scale(0.97);
+}
+
+.email-auth-submit:disabled,
+.signup-submit:disabled,
+.welcome-hitbox:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.auth-message {
+  margin: 12px 4px 0;
+  color: #b33f3f;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.auth-message--welcome {
+  position: fixed;
+  z-index: 150;
+  top: calc(14px + env(safe-area-inset-top));
+  left: 50%;
+  width: min(calc(100vw - 36px), 430px);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 11px 14px;
+  border: 1px solid rgba(179, 63, 63, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 250, 248, 0.96);
+  box-shadow: 0 8px 24px rgba(70, 39, 39, 0.12);
+  transform: translateX(-50%);
+}
+
+.email-auth-sent {
+  margin: -12px 0 22px;
+  color: #638671;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.email-auth-sent strong {
+  color: #137246;
+}
+
+.email-auth-code {
+  padding: 0 18px;
+  text-align: center;
+  font-size: 24px !important;
+  letter-spacing: 0.38em;
+  font-variant-numeric: tabular-nums;
+}
+
+.email-auth-code::placeholder {
+  color: #a8b9ad;
+}
+
+.email-auth-hint {
+  margin: 10px 4px 0;
+  color: #7c9686;
+  font-size: 12px;
+}
+
+.email-auth-resend {
+  display: block;
+  margin: 15px auto 0;
+  padding: 7px 12px;
+  border: 0;
+  background: transparent;
+  color: #287451;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.email-auth-decoration {
+  position: absolute;
+  color: rgba(247, 184, 95, 0.43);
+  font-size: 62px;
+  pointer-events: none;
+}
+
+.email-auth-decoration--left {
+  left: -17px;
+  bottom: 7%;
+  transform: rotate(-15deg);
+}
+
+.email-auth-decoration--right {
+  right: -14px;
+  top: 18%;
+  color: rgba(255, 145, 124, 0.32);
+  transform: rotate(18deg) scale(0.75);
+}
+
+@media (max-height: 700px) {
+  .email-auth {
+    overflow-y: auto;
+    padding-top: calc(10px + env(safe-area-inset-top));
+  }
+
+  .email-auth-main {
+    justify-content: flex-start;
+    padding-top: 18px;
+    padding-bottom: 24px;
+  }
+
+  .email-auth-paw {
+    width: 58px;
+    height: 58px;
+    margin-bottom: 14px;
+    font-size: 28px;
+  }
+
+  .email-auth-copy {
+    margin-bottom: 20px;
+  }
+
+  .email-auth-copy h1 {
+    font-size: 27px;
+  }
+}
+
+/* 세 로그인 방식이 합류하는 공통 회원가입 화면 */
+.signup-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding: calc(18px + env(safe-area-inset-top)) 20px calc(26px + env(safe-area-inset-bottom));
+  color: #174f36;
+  background:
+    radial-gradient(circle at 91% 12%, rgba(255, 255, 255, 0.86) 0 62px, transparent 63px),
+    radial-gradient(circle at 8% 91%, rgba(213, 241, 173, 0.72) 0 92px, transparent 93px),
+    linear-gradient(155deg, #f9fff5 0%, #eff9e9 58%, #f8f7df 100%);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  overscroll-behavior: contain;
+}
+
+.signup-screen[hidden] {
+  display: none;
+}
+
+.signup-header {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 430px);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.signup-badge {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #4f8568;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.signup-main {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 430px);
+  margin: 0 auto;
+  padding: 28px 0 12px;
+}
+
+.signup-copy {
+  margin-bottom: 25px;
+  text-align: center;
+}
+
+.signup-paw {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 13px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 7px 18px rgba(36, 102, 61, 0.11);
+  display: grid;
+  place-items: center;
+  font-size: 27px;
+  transform: rotate(-5deg);
+}
+
+.signup-copy h1 {
+  margin: 0 0 7px;
+  color: #08703f;
+  font-size: clamp(28px, 8vw, 35px);
+  line-height: 1.15;
+  letter-spacing: -0.055em;
+}
+
+.signup-copy p {
+  margin: 0;
+  color: #678872;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.signup-form {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.signup-form label {
+  margin: 0 0 7px 4px;
+  color: #255f43;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.signup-form input {
+  width: 100%;
+  height: 70px;
+  box-sizing: border-box;
+  margin-bottom: 15px;
+  padding: 0 17px;
+  border: 1.5px solid rgba(40, 117, 72, 0.15);
+  border-radius: 17px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.94);
+  color: #174c34;
+  box-shadow: 0 4px 14px rgba(35, 98, 61, 0.08);
+  font: 600 15px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.signup-form input:focus {
+  border-color: #22935b;
+  box-shadow: 0 0 0 4px rgba(34, 147, 91, 0.1), 0 4px 14px rgba(35, 98, 61, 0.08);
+}
+
+.signup-form input::placeholder {
+  color: #a1b1a7;
+}
+
+.signup-submit {
+  width: 100%;
+  height: 58px;
+  margin-top: 5px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #168252 0%, #087342 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(12, 104, 58, 0.22);
+  font: 750 16px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  cursor: pointer;
+}
+
+.signup-submit:active {
+  transform: scale(0.98);
+}
+
+.signup-decoration {
+  position: fixed;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.signup-decoration--top {
+  top: 13%;
+  left: -16px;
+  color: rgba(78, 151, 96, 0.15);
+  font-size: 62px;
+  transform: rotate(-17deg);
+}
+
+.signup-decoration--bottom {
+  right: -13px;
+  bottom: 9%;
+  color: rgba(246, 170, 86, 0.35);
+  font-size: 64px;
+  transform: rotate(18deg);
+}
+
+@media (max-height: 760px) {
+  .signup-screen {
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .signup-main {
+    padding-top: 14px;
+  }
+
+  .signup-copy {
+    margin-bottom: 17px;
+  }
+
+  .signup-paw {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 9px;
+    font-size: 23px;
+  }
+
+  .signup-copy h1 {
+    font-size: 27px;
+  }
+
+  .signup-form input {
+    height: 50px;
+    margin-bottom: 11px;
+  }
+}
+
+/* 촬영 후 분류 결과: 실패 / 기존 고양이 / 새 고양이 */
+.capture-result {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  overflow: hidden;
+  color: #245f4b;
+  background: #f3faec;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+.capture-result[hidden],
+.capture-result-panel[hidden],
+.capture-preview-switcher[hidden] {
+  display: none;
+}
+
+.capture-result-panel {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  min-height: 100%;
+  overflow-y: auto;
+  padding: calc(68px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 90% 18%, rgba(255, 255, 255, 0.92) 0 55px, transparent 56px),
+    linear-gradient(160deg, #f9fff4 0%, #eef8e8 58%, #faf8e5 100%);
+  overscroll-behavior: contain;
+}
+
+.capture-result-panel::after {
+  content: '';
+  position: fixed;
+  z-index: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 92px;
+  background:
+    radial-gradient(ellipse at 10% 110%, #cfeea2 0 30%, transparent 31%),
+    radial-gradient(ellipse at 50% 118%, #e4f4b9 0 37%, transparent 38%),
+    radial-gradient(ellipse at 90% 110%, #c9e993 0 31%, transparent 32%);
+  pointer-events: none;
+}
+
+.capture-result-panel > * {
+  position: relative;
+  z-index: 2;
+}
+
+.capture-result-close {
+  position: absolute;
+  top: calc(18px + env(safe-area-inset-top));
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(39, 112, 79, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: #32705a;
+  box-shadow: 0 4px 12px rgba(39, 92, 62, 0.12);
+  font-size: 21px;
+  cursor: pointer;
+}
+
+.capture-result-copy {
+  text-align: center;
+}
+
+.capture-result-copy h1 {
+  margin: 0 0 8px;
+  color: #1e6650;
+  font-size: clamp(25px, 7.2vw, 34px);
+  line-height: 1.18;
+  letter-spacing: -0.055em;
+}
+
+.capture-result-copy p {
+  margin: 0;
+  color: #6f8f7c;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.capture-result-copy--top {
+  margin-bottom: 24px;
+}
+
+.capture-result-kicker {
+  display: inline-block;
+  margin-bottom: 7px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: #e0f2cf;
+  color: #3f7c55;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.capture-result-actions {
+  width: min(100%, 430px);
+  margin: 25px auto 0;
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 12px;
+}
+
+.capture-result-actions--stack {
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.capture-primary,
+.capture-secondary {
+  min-height: 54px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: 750 15px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  cursor: pointer;
+}
+
+.capture-primary {
+  border: 0;
+  background: linear-gradient(180deg, #327e62, #1d6b50);
+  color: #fff;
+  box-shadow: 0 7px 17px rgba(30, 102, 73, 0.2);
+}
+
+.capture-secondary {
+  border: 1.5px solid rgba(39, 112, 79, 0.42);
+  background: rgba(255, 255, 255, 0.86);
+  color: #286e54;
+}
+
+.capture-primary:active,
+.capture-secondary:active,
+.capture-result-close:active {
+  transform: scale(0.97);
+}
+
+/* 감지 실패 */
+.capture-result-panel--failure {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background:
+    linear-gradient(rgba(241, 248, 232, 0.76), rgba(241, 248, 232, 0.9)),
+    radial-gradient(circle at 28% 30%, #b9d29b 0 70px, transparent 71px),
+    radial-gradient(circle at 70% 48%, #d7dfb5 0 95px, transparent 96px),
+    #eaf1df;
+}
+
+.capture-focus-corners {
+  position: absolute;
+  inset: 19% 15% 43%;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  border-radius: 18px;
+  clip-path: polygon(0 0, 14% 0, 14% 2%, 2% 2%, 2% 20%, 0 20%, 0 0, 100% 0, 100% 20%, 98% 20%, 98% 2%, 86% 2%, 86% 0, 100% 0, 100% 100%, 86% 100%, 86% 98%, 98% 98%, 98% 80%, 100% 80%, 100% 100%, 0 100%, 0 80%, 2% 80%, 2% 98%, 14% 98%, 14% 100%, 0 100%);
+  pointer-events: none;
+}
+
+.capture-failure-icon {
+  width: 86px;
+  height: 86px;
+  margin: 0 auto 30px;
+  border: 5px solid #fff;
+  border-radius: 50%;
+  background: rgba(112, 168, 112, 0.82);
+  box-shadow: 0 6px 16px rgba(53, 94, 57, 0.18);
+  display: grid;
+  place-items: center;
+  font-size: 35px;
+}
+
+.capture-tip-card {
+  width: min(100%, 390px);
+  box-sizing: border-box;
+  margin: 42px auto 0;
+  padding: 13px 18px 14px;
+  border: 1px solid rgba(49, 111, 74, 0.08);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 7px 18px rgba(53, 94, 57, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+.capture-tip-title {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #36745b;
+  font-size: 13px;
+}
+
+.capture-tip-title span {
+  height: 1px;
+  background: #cddfca;
+}
+
+.capture-tip-card p {
+  margin: 0;
+  padding: 6px 0;
+  color: #477461;
+  font-size: 13px;
+}
+
+/* 공통 촬영 사진 카드 */
+.capture-photo-card {
+  position: relative;
+  width: min(78vw, 330px);
+  margin: 0 auto;
+  padding: 12px;
+  border-radius: 25px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 9px 24px rgba(44, 91, 57, 0.14);
+}
+
+.capture-photo-scene {
+  position: relative;
+  aspect-ratio: 1.05;
+  overflow: hidden;
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 50% 106%, #d6c197 0 30%, transparent 31%),
+    radial-gradient(circle at 25% 30%, rgba(255, 255, 255, 0.38) 0 24px, transparent 25px),
+    linear-gradient(155deg, #91ba70 0%, #c8dfa1 48%, #e8e0bd 100%);
+  background-position: center;
+  background-size: cover;
+  display: grid;
+  place-items: end center;
+}
+
+.capture-photo-scene.has-photo .capture-photo-cat {
+  display: none;
+}
+
+.capture-photo-cat {
+  font-size: clamp(118px, 38vw, 175px);
+  line-height: 0.95;
+  filter: drop-shadow(0 8px 5px rgba(48, 70, 39, 0.16));
+  transform: scaleX(-1);
+}
+
+.capture-match-badge {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #287153;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 3px 9px rgba(39, 82, 50, 0.13);
+}
+
+/* 기존 고양이 */
+.capture-result-panel--existing {
+  padding-top: calc(82px + env(safe-area-inset-top));
+}
+
+.capture-cat-card {
+  width: min(100%, 430px);
+  box-sizing: border-box;
+  margin: 22px auto 0;
+  padding: 15px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 6px 18px rgba(42, 94, 59, 0.1);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 13px;
+}
+
+.capture-cat-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #e4efcf;
+  display: grid;
+  place-items: center;
+  font-size: 29px;
+}
+
+.capture-cat-card h2,
+.capture-cat-card p {
+  margin: 0;
+}
+
+.capture-cat-card h2 {
+  margin-bottom: 4px;
+  color: #1f6b50;
+  font-size: 21px;
+}
+
+.capture-cat-card h2 span {
+  font-size: 13px;
+}
+
+.capture-cat-card p {
+  color: #759080;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.capture-cat-card > strong {
+  color: #649076;
+  font-size: 11px;
+}
+
+.capture-found-info {
+  width: min(100%, 430px);
+  margin: 12px auto 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.capture-found-info span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(226, 241, 210, 0.82);
+  color: #527d64;
+  font-size: 11px;
+}
+
+/* 새 고양이 */
+.capture-result-panel--new {
+  padding-top: calc(92px + env(safe-area-inset-top));
+}
+
+.capture-photo-card--new {
+  margin-top: 6px;
+}
+
+.capture-flower,
+.capture-leaf {
+  position: absolute;
+  z-index: 3;
+  font-size: 42px;
+  filter: drop-shadow(0 3px 2px rgba(56, 89, 47, 0.1));
+}
+
+.capture-flower {
+  top: -18px;
+  left: -14px;
+}
+
+.capture-leaf {
+  right: -17px;
+  bottom: -12px;
+  transform: rotate(-18deg);
+}
+
+.capture-save-copy {
+  margin: 28px auto 0;
+  text-align: center;
+}
+
+.capture-save-copy > span {
+  color: #7c9c87;
+  font-size: 12px;
+}
+
+.capture-save-copy h2 {
+  margin: 15px 0 8px;
+  color: #286b54;
+  font-size: 20px;
+  letter-spacing: -0.04em;
+}
+
+.capture-save-copy p {
+  margin: 0;
+  color: #799283;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 후보 선택 (판단이 애매할 때 비슷한 고양이 중 고르기)
+   사진 카드 + 후보 5개 + 버튼까지 한 화면에 담기게 다른 패널처럼 압축한다. */
+.capture-result-panel--candidates {
+  padding-top: calc(58px + env(safe-area-inset-top));
+}
+
+.capture-result-panel--candidates .capture-result-copy {
+  margin-bottom: 4px;
+}
+
+.capture-photo-card--candidates {
+  width: min(42vw, 148px);
+  padding: 9px;
+  border-radius: 20px;
+}
+
+.capture-photo-card--candidates .capture-photo-cat {
+  font-size: clamp(64px, 24vw, 104px);
+}
+
+.capture-candidate-list {
+  width: min(100%, 430px);
+  margin: 10px auto 0;
+  display: grid;
+  gap: 8px;
+}
+
+.capture-candidate-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.08);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.capture-candidate-item input[type='radio'] {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.capture-candidate-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #e4efcf;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  flex: none;
+}
+
+.capture-candidate-avatar--muted {
+  background: #dcefe6;
+}
+
+.capture-candidate-info {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.capture-candidate-info strong {
+  color: #1f6b50;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.capture-candidate-info span {
+  color: #759080;
+  font-size: 12px;
+}
+
+.capture-candidate-radio {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(39, 112, 79, 0.32);
+  border-radius: 50%;
+  background: #fff;
+  flex: none;
+}
+
+.capture-candidate-item:has(input:checked) {
+  background: #e3f3d6;
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.16);
+}
+
+.capture-candidate-item:has(input:checked) .capture-candidate-radio {
+  border-color: #1d6b50;
+  background: radial-gradient(circle, #1d6b50 42%, transparent 43%);
+}
+
+.capture-preview-switcher {
+  position: fixed;
+  z-index: 150;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 50%;
+  padding: 5px;
+  border: 1px solid rgba(39, 112, 79, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 5px 16px rgba(34, 87, 57, 0.13);
+  display: flex;
+  gap: 3px;
+  transform: translateX(-50%);
+}
+
+.capture-preview-switcher button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #6b8d78;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.capture-preview-switcher button.is-active {
+  background: #28765a;
+  color: #fff;
+}
+
+@media (max-height: 700px) {
+  .capture-result-panel {
+    padding-top: calc(58px + env(safe-area-inset-top));
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .capture-result-panel--failure {
+    justify-content: flex-start;
+  }
+
+  .capture-failure-icon {
+    width: 62px;
+    height: 62px;
+    margin-bottom: 16px;
+    font-size: 27px;
+  }
+
+  .capture-tip-card {
+    margin-top: 20px;
+  }
+
+  .capture-result-copy--top {
+    margin-bottom: 14px;
+  }
+
+  .capture-photo-card {
+    width: min(62vw, 245px);
+  }
+
+  .capture-result-panel--candidates {
+    padding-top: calc(44px + env(safe-area-inset-top));
+  }
+
+  .capture-photo-card--candidates {
+    width: min(28vw, 92px);
+  }
+
+  .capture-candidate-list {
+    margin-top: 10px;
+    gap: 6px;
+  }
+
+  .capture-candidate-item {
+    padding: 7px 12px;
+    border-radius: 15px;
+  }
+
+  .capture-candidate-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 17px;
+  }
+
+  .capture-candidate-info strong {
+    font-size: 14px;
+  }
+
+  .capture-candidate-info span {
+    font-size: 11px;
+  }
+
+  .capture-cat-card {
+    margin-top: 13px;
+    padding: 10px 13px;
+  }
+
+  .capture-found-info {
+    margin-top: 8px;
+  }
+
+  .capture-save-copy {
+    margin-top: 17px;
+  }
+
+  .capture-result-actions {
+    margin-top: 15px;
+  }
+
+  .capture-primary,
+  .capture-secondary {
+    min-height: 48px;
   }
 }
 
@@ -726,12 +1839,11 @@ body {
   white-space: nowrap;
 }
 
-/* 지도 위에 남는 촬영 사진 마커
-   말풍선을 작게, 꼬리를 길게 해서 3D 모델과 겹치지 않게 높이 띄운다. */
+/* 지도 위에 남는 촬영 사진 마커 */
 .photo-marker {
   position: relative;
   width: 48px;
-  height: 150px;
+  height: 54px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -794,9 +1906,9 @@ body {
   content: '';
   position: absolute;
   left: 50%;
-  bottom: -100px;
-  width: 12px;
-  height: 102px;
+  bottom: -20px;
+  width: 10px;
+  height: 22px;
   background: #fff;
   transform: translateX(-50%);
   clip-path: polygon(7% 0, 93% 0, 58% 100%, 42% 100%);
@@ -1144,4 +2256,1137 @@ body {
   line-height: 1;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* 개인 계정 도감 (캣집사 프로필) */
+.profile-dex {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: #245f4b;
+  background: #f3faec;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+.profile-dex[hidden] {
+  display: none;
+}
+
+.profile-dex-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(14px + env(safe-area-inset-top)) 20px 0;
+}
+
+.profile-dex-icon-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(39, 112, 79, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1f6b50;
+  box-shadow: 0 4px 12px rgba(39, 92, 62, 0.12);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.profile-dex-icon-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.profile-dex-icon-btn:active {
+  transform: scale(0.94);
+}
+
+.profile-dex-main {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 20px calc(28px + env(safe-area-inset-bottom));
+}
+
+.profile-dex::after {
+  content: '';
+  position: fixed;
+  z-index: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 78px;
+  background:
+    radial-gradient(ellipse at 10% 110%, #cfeea2 0 30%, transparent 31%),
+    radial-gradient(ellipse at 50% 118%, #e4f4b9 0 37%, transparent 38%),
+    radial-gradient(ellipse at 90% 110%, #c9e993 0 31%, transparent 32%);
+  pointer-events: none;
+}
+
+.profile-dex-identity {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 18px;
+}
+
+.profile-dex-avatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: #e4efcf;
+  border: 3px solid #fff;
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.14);
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  flex: none;
+}
+
+.profile-dex-name-block h1 {
+  margin: 0 0 4px;
+  color: #1f6b50;
+  font-size: 25px;
+  letter-spacing: -0.03em;
+}
+
+.profile-dex-name-block h1 span {
+  font-size: 17px;
+}
+
+.profile-dex-name-block p {
+  margin: 0;
+  color: #6f8f7c;
+  font-size: 13px;
+}
+
+.profile-dex-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 22px;
+  padding: 15px 8px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.08);
+}
+
+.profile-dex-stat {
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  text-align: center;
+}
+
+.profile-dex-stat + .profile-dex-stat {
+  border-left: 1px solid rgba(49, 111, 74, 0.12);
+}
+
+.profile-dex-stat span {
+  color: #6f8f7c;
+  font-size: 12px;
+}
+
+.profile-dex-stat strong {
+  color: #1f6b50;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+}
+
+.profile-dex-collection-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.profile-dex-collection-head h2 {
+  margin: 0;
+  color: #245f4b;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.profile-dex-progress {
+  color: #7c9c87;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.profile-dex-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.dex-card {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dex-card-photo {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 3px solid #fff;
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse at 50% 108%, #d6c197 0 30%, transparent 31%),
+    linear-gradient(155deg, #a7cd82 0%, #cbe1a6 55%, #ece4c2 100%);
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.12);
+  display: grid;
+  place-items: end center;
+}
+
+.dex-card-photo span {
+  font-size: clamp(48px, 15vw, 66px);
+  line-height: 1.05;
+  filter: drop-shadow(0 5px 3px rgba(48, 70, 39, 0.16));
+  transform: scaleX(-1);
+}
+
+.dex-card-photo--tabby {
+  background:
+    radial-gradient(ellipse at 50% 108%, #cdbb93 0 30%, transparent 31%),
+    linear-gradient(155deg, #b7c98d 0%, #d7e2b0 55%, #ece3bd 100%);
+}
+
+.dex-card-photo--tabby span {
+  filter: grayscale(0.6) brightness(0.9) drop-shadow(0 5px 3px rgba(48, 70, 39, 0.16));
+}
+
+.dex-card-photo--calico {
+  background:
+    radial-gradient(ellipse at 50% 108%, #d8c49a 0 30%, transparent 31%),
+    linear-gradient(155deg, #9dc7a3 0%, #cfe3c0 55%, #ece7c6 100%);
+}
+
+.dex-card-photo--calico span {
+  filter: hue-rotate(-18deg) saturate(1.15) brightness(1.05) drop-shadow(0 5px 3px rgba(48, 70, 39, 0.16));
+}
+
+.dex-card-photo--black {
+  background:
+    radial-gradient(ellipse at 50% 108%, #c7b28a 0 30%, transparent 31%),
+    linear-gradient(155deg, #93b98f 0%, #c3dbb2 55%, #e6e6c9 100%);
+}
+
+.dex-card strong {
+  color: #2a6650;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.dex-card--locked .dex-card-photo {
+  background: rgba(226, 236, 219, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(49, 111, 74, 0.06);
+}
+
+.dex-card--locked .dex-card-photo span {
+  font-size: clamp(44px, 14vw, 60px);
+  filter: none;
+  opacity: 0.28;
+  transform: none;
+}
+
+.dex-card--locked strong {
+  color: #a8bbad;
+}
+
+.profile-dex-menu {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-dex-menu-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 15px 16px;
+  border: 0;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.07);
+  color: #285f4b;
+  font: 750 15px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.profile-dex-menu-item:active {
+  transform: scale(0.99);
+}
+
+.profile-dex-menu-icon {
+  font-size: 19px;
+}
+
+.profile-dex-menu-item svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: #9cb6a6;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (max-height: 720px) {
+  .profile-dex-identity {
+    margin-bottom: 12px;
+  }
+
+  .profile-dex-avatar {
+    width: 56px;
+    height: 56px;
+    font-size: 27px;
+  }
+
+  .profile-dex-stats {
+    margin-bottom: 14px;
+    padding: 11px 8px;
+  }
+
+  .profile-dex-collection-head {
+    margin-bottom: 10px;
+  }
+
+  .profile-dex-grid {
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .profile-dex-menu {
+    gap: 8px;
+  }
+
+  .profile-dex-menu-item {
+    padding: 11px 16px;
+  }
+}
+
+/* 지도 오른쪽 위 메뉴 열기 버튼 */
+#menu-btn {
+  position: fixed;
+  top: calc(16px + env(safe-area-inset-top));
+  right: 18px;
+  z-index: 3;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 3px solid rgba(43, 158, 127, 0.25);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#menu-btn:active {
+  transform: scale(0.92);
+}
+
+/* 내 고양이 메뉴 (오른쪽에서 나오는 사이드바) */
+#cat-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+#cat-menu[hidden] {
+  display: none;
+}
+
+.cat-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: rgba(24, 63, 55, 0.3);
+  opacity: 0;
+  transition: opacity 260ms ease;
+  cursor: pointer;
+}
+
+#cat-menu.is-open .cat-menu-backdrop {
+  opacity: 1;
+}
+
+.cat-menu-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(84%, 360px);
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: calc(20px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom));
+  border-radius: 28px 0 0 28px;
+  color: #245f4b;
+  background:
+    radial-gradient(circle at 88% 6%, rgba(255, 255, 255, 0.9) 0 46px, transparent 47px),
+    linear-gradient(160deg, #f2fbe8 0%, #eef7e4 55%, #f6f4de 100%);
+  box-shadow: -12px 0 34px rgba(28, 74, 64, 0.22);
+  transform: translateX(100%);
+  transition: transform 300ms cubic-bezier(0.22, 0.8, 0.28, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+#cat-menu.is-open .cat-menu-panel {
+  transform: translateX(0);
+}
+
+.cat-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.cat-menu-header h2 {
+  margin: 0;
+  color: #1f6b50;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.cat-menu-close {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgba(39, 112, 79, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: #32705a;
+  box-shadow: 0 3px 10px rgba(39, 92, 62, 0.12);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.cat-menu-close:active {
+  transform: scale(0.94);
+}
+
+.cat-menu-greeting {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 16px;
+  padding: 0 4px;
+}
+
+.cat-menu-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #e4efcf;
+  border: 2px solid #fff;
+  box-shadow: 0 4px 12px rgba(42, 94, 59, 0.14);
+  display: grid;
+  place-items: center;
+  font-size: 27px;
+  flex: none;
+}
+
+.cat-menu-greeting p {
+  margin: 0;
+  color: #4d7a63;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.cat-menu-greeting strong {
+  color: #1f6b50;
+  font-size: 19px;
+}
+
+.cat-menu-leaf {
+  margin-left: auto;
+  font-size: 26px;
+  opacity: 0.85;
+}
+
+.cat-menu-feature {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(49, 111, 74, 0.12);
+  border-radius: 20px;
+  background: linear-gradient(150deg, #dcefc6, #cbe7bc);
+  box-shadow: 0 6px 16px rgba(42, 94, 59, 0.12);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cat-menu-feature:active {
+  transform: scale(0.99);
+}
+
+.cat-menu-feature-cat {
+  font-size: 36px;
+  filter: drop-shadow(0 3px 2px rgba(48, 70, 39, 0.18));
+  transform: scaleX(-1);
+}
+
+.cat-menu-feature-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.cat-menu-feature-copy span {
+  color: #5a8368;
+  font-size: 12px;
+}
+
+.cat-menu-feature-copy strong {
+  color: #1c6045;
+  font-size: 21px;
+  letter-spacing: -0.03em;
+}
+
+.cat-menu-feature > svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: #5f9070;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cat-menu-list {
+  display: grid;
+  gap: 9px;
+}
+
+.cat-menu-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 12px 15px;
+  border: 0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 12px rgba(42, 94, 59, 0.06);
+  color: #2a6650;
+  font: 700 15px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cat-menu-item:active {
+  transform: scale(0.99);
+}
+
+.cat-menu-item-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: #2f7357;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cat-menu-chevron {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: #a4bcac;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cat-menu-footer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16px;
+  padding-top: 2px;
+}
+
+.cat-menu-footer-flower,
+.cat-menu-footer-leaf {
+  position: absolute;
+  font-size: 22px;
+  opacity: 0.8;
+}
+
+.cat-menu-footer-flower {
+  left: 6px;
+}
+
+.cat-menu-footer-leaf {
+  right: 6px;
+}
+
+.cat-menu-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 26px;
+  border: 1.5px solid rgba(39, 112, 79, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #286e54;
+  font: 750 14px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  cursor: pointer;
+}
+
+.cat-menu-logout:active {
+  transform: scale(0.97);
+}
+
+.cat-menu-logout svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-menu-panel,
+  .cat-menu-backdrop {
+    transition: none;
+  }
+}
+
+/* 고양이 상세 (도감 → 개별 고양이) */
+.cat-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 26;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: #245f4b;
+  background: #f3faec;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+.cat-detail[hidden] {
+  display: none;
+}
+
+.cat-detail-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(14px + env(safe-area-inset-top)) 20px 0;
+}
+
+.cat-detail-icon-btn,
+.cat-detail-fav {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(39, 112, 79, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1f6b50;
+  box-shadow: 0 4px 12px rgba(39, 92, 62, 0.12);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.cat-detail-icon-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cat-detail-fav svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: #2f7357;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.cat-detail-fav[aria-pressed='true'] svg {
+  fill: #2f7357;
+}
+
+.cat-detail-icon-btn:active,
+.cat-detail-fav:active {
+  transform: scale(0.94);
+}
+
+.cat-detail-main {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 20px calc(28px + env(safe-area-inset-bottom));
+}
+
+.cat-detail-photo {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 9px 24px rgba(44, 91, 57, 0.14);
+}
+
+.cat-detail-photo .capture-photo-scene {
+  aspect-ratio: 1.28;
+  border-radius: 24px;
+}
+
+.cat-detail-count {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #287153;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 3px 9px rgba(39, 82, 50, 0.13);
+}
+
+.cat-detail-count svg {
+  width: 14px;
+  height: 14px;
+  fill: #f4b73d;
+}
+
+.cat-detail-identity {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 2px 22px;
+}
+
+.cat-detail-name-block h1 {
+  margin: 0 0 6px;
+  color: #1f6b50;
+  font-size: 27px;
+  letter-spacing: -0.03em;
+}
+
+.cat-detail-name-block h1 span {
+  font-size: 18px;
+}
+
+.cat-detail-name-block p {
+  margin: 0;
+  color: #6f8f7c;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cat-detail-date {
+  color: #8aa596 !important;
+  font-size: 12px !important;
+}
+
+.cat-detail-3d {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 10px 14px;
+  border: 1px solid rgba(49, 111, 74, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.1);
+  color: #287153;
+  font: 750 13px/1.1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cat-detail-3d:active {
+  transform: scale(0.97);
+}
+
+.cat-detail-3d-icon svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: #3aa06f;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.cat-detail-3d-chevron {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: #8fb19f;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cat-detail-section {
+  margin-bottom: 18px;
+}
+
+.cat-detail-section h2 {
+  margin: 0 0 10px 2px;
+  color: #245f4b;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.cat-detail-record {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: rgba(233, 243, 214, 0.66);
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.07);
+}
+
+.cat-detail-record p {
+  margin: 0;
+  color: #4d7761;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.cat-detail-record-leaf {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  font-size: 30px;
+  opacity: 0.85;
+}
+
+.cat-detail-map {
+  position: relative;
+  height: 150px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.1);
+  background:
+    linear-gradient(115deg, transparent 46%, rgba(255, 255, 255, 0.85) 47%, rgba(255, 255, 255, 0.85) 49%, transparent 50%),
+    linear-gradient(60deg, transparent 63%, rgba(255, 255, 255, 0.8) 64%, rgba(255, 255, 255, 0.8) 66%, transparent 67%),
+    linear-gradient(160deg, #d7ecb8 0%, #c7e6ad 55%, #d3ecbe 100%);
+}
+
+.cat-detail-map-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100%);
+}
+
+.cat-detail-map-pin svg {
+  width: 40px;
+  height: 40px;
+  fill: #ec5b52;
+  filter: drop-shadow(0 4px 5px rgba(60, 40, 38, 0.28));
+}
+
+@media (max-height: 730px) {
+  .cat-detail-photo .capture-photo-scene {
+    aspect-ratio: 1.5;
+  }
+
+  .cat-detail-identity {
+    margin: 14px 2px 16px;
+  }
+
+  .cat-detail-section {
+    margin-bottom: 14px;
+  }
+
+  .cat-detail-map {
+    height: 120px;
+  }
+}
+
+/* 카메라 뷰파인더 (예쁜 촬영 화면) */
+.camera-view {
+  position: fixed;
+  inset: 0;
+  z-index: 28;
+  overflow: hidden;
+  background: #16221b;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+.camera-view[hidden] {
+  display: none;
+}
+
+.camera-stream {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #16221b;
+}
+
+.camera-view-close {
+  position: absolute;
+  z-index: 7;
+  top: calc(18px + env(safe-area-inset-top));
+  left: 18px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #276c53;
+  box-shadow: 0 4px 14px rgba(16, 43, 31, 0.2);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* 권한 거부/API 미지원 시 보이는 대체 배경 */
+.camera-scene {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 92%, rgba(196, 176, 132, 0.55) 0 20%, transparent 42%),
+    radial-gradient(circle at 20% 26%, rgba(255, 255, 255, 0.35) 0 60px, transparent 61px),
+    radial-gradient(circle at 82% 20%, rgba(255, 255, 255, 0.22) 0 44px, transparent 45px),
+    radial-gradient(circle at 72% 66%, rgba(255, 255, 255, 0.18) 0 70px, transparent 71px),
+    linear-gradient(180deg, #aec9cc 0%, #a6c8a1 33%, #8cb674 58%, #a2ba81 80%, #c1c199 100%);
+}
+
+.camera-scene[hidden] {
+  display: none;
+}
+
+.camera-scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 62%, rgba(120, 158, 96, 0.4) 0 34px, transparent 35px),
+    radial-gradient(circle at 90% 78%, rgba(120, 158, 96, 0.34) 0 40px, transparent 41px),
+    radial-gradient(circle at 40% 12%, rgba(150, 185, 120, 0.34) 0 30px, transparent 31px);
+  filter: blur(2px);
+}
+
+/* 뷰파인더 코너 브래킷 (틀) */
+.camera-viewfinder {
+  position: absolute;
+  z-index: 3;
+  inset: 17% 12% 32%;
+  pointer-events: none;
+}
+
+.camera-corner {
+  position: absolute;
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(255, 255, 255, 0.95);
+  filter: drop-shadow(0 1px 3px rgba(40, 60, 40, 0.18));
+}
+
+.camera-corner--tl {
+  top: 0;
+  left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 16px 0 0 0;
+}
+
+.camera-corner--tr {
+  top: 0;
+  right: 0;
+  border-left: 0;
+  border-bottom: 0;
+  border-radius: 0 16px 0 0;
+}
+
+.camera-corner--bl {
+  bottom: 0;
+  left: 0;
+  border-right: 0;
+  border-top: 0;
+  border-radius: 0 0 0 16px;
+}
+
+.camera-corner--br {
+  bottom: 0;
+  right: 0;
+  border-left: 0;
+  border-top: 0;
+  border-radius: 0 0 16px 0;
+}
+
+/* 안내 말풍선 */
+.camera-message {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: calc(112px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.camera-message p {
+  position: relative;
+  margin: 0;
+  padding: 14px 22px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #2c6a52;
+  box-shadow: 0 6px 18px rgba(40, 70, 45, 0.2);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.camera-status {
+  position: absolute;
+  z-index: 6;
+  top: calc(76px + env(safe-area-inset-top));
+  left: 50%;
+  width: min(calc(100% - 40px), 390px);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 15px;
+  background: rgba(26, 62, 45, 0.76);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.camera-status[hidden] {
+  display: none;
+}
+
+.camera-controls {
+  position: absolute;
+  z-index: 7;
+  left: 0;
+  right: 0;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.camera-shutter {
+  width: 76px;
+  height: 76px;
+  padding: 5px;
+  border: 4px solid rgba(255, 255, 255, 0.96);
+  border-radius: 50%;
+  background: rgba(18, 47, 34, 0.3);
+  box-shadow: 0 4px 18px rgba(12, 33, 24, 0.28);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 120ms ease;
+}
+
+.camera-shutter span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: inset 0 0 0 2px rgba(35, 110, 79, 0.12);
+}
+
+.camera-shutter:active {
+  transform: scale(0.91);
+}
+
+.camera-shutter:disabled {
+  opacity: 0.7;
+}
+
+.camera-view::after {
+  content: '';
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.camera-view.is-capturing::after {
+  animation: camera-flash 220ms ease-out;
+}
+
+@keyframes camera-flash {
+  0% { opacity: 0.92; }
+  100% { opacity: 0; }
 }

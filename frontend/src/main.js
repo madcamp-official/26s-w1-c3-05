@@ -3,10 +3,10 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { addFlowerDecorations } from './FlowerDecorations.js'
 import { createAnimatedModelLayer } from './model-layer.js'
 import { MOCK_USER_AVATAR, fetchMockCatActors, fetchMockMapObjects } from './mock-map-api.js'
+import { API_BASE_URL } from './auth.js'
 
 // 백엔드 API 주소. 배포 시 VITE_API_BASE_URL 환경변수로 주입한다.
 // (미설정 시 로컬 개발용 백엔드로 fallback)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000'
 
 // KAIST 본원 (대전) 중심 좌표: [경도, 위도]
 const KAIST_CENTER = [127.3628, 36.3721]
@@ -225,6 +225,7 @@ map.once('idle', () => {
 
 let userPos = null // 최근 GPS 위치 [lng, lat]
 let userPosAccuracy = Infinity // 최근 GPS 정확도(미터)
+let userPosUpdatedAt = 0 // 마지막으로 GPS를 받은 시각
 let isFollowing = false // false = 전체 지도 시점, true = 마커 시점
 let isTransitioning = false // flyTo 애니메이션 중인지
 
@@ -268,6 +269,7 @@ function startPositionTracking() {
     (pos) => {
       userPos = [pos.coords.longitude, pos.coords.latitude]
       userPosAccuracy = pos.coords.accuracy
+      userPosUpdatedAt = Date.now()
       animatedModelLayer.setAvatarPosition(userPos)
       // 마커 시점일 때는 카메라도 내 위치를 따라감.
       // GPS 좌표가 튀어도 화면이 순간이동하지 않게 부드럽게 이동한다.
@@ -278,6 +280,33 @@ function startPositionTracking() {
     (err) => console.warn('위치 정보를 가져오지 못했습니다.', err),
     { enableHighAccuracy: true, maximumAge: 1000 }
   )
+}
+
+// 촬영 좌표는 watchPosition의 오래된 값이나 기본 좌표를 그대로 쓰지 않는다.
+// 촬영 직전에 가능한 한 최신 고정밀 위치를 한 번 더 요청한다.
+function refreshPositionForPhoto() {
+  if (!('geolocation' in navigator)) return Promise.resolve(false)
+
+  const isRecent = userPos && Date.now() - userPosUpdatedAt < 10_000
+  const isAccurateEnough = Number.isFinite(userPosAccuracy) && userPosAccuracy <= 50
+  if (isRecent && isAccurateEnough) return Promise.resolve(true)
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        userPos = [pos.coords.longitude, pos.coords.latitude]
+        userPosAccuracy = pos.coords.accuracy
+        userPosUpdatedAt = Date.now()
+        animatedModelLayer.setAvatarPosition(userPos)
+        resolve(true)
+      },
+      (error) => {
+        console.warn('촬영 위치를 새로 가져오지 못했습니다.', error)
+        resolve(Boolean(userPos))
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 }
+    )
+  })
 }
 
 let positionTrackingStarted = false
@@ -301,6 +330,8 @@ function enterApp() {
 document.querySelectorAll('[data-enter-app]').forEach((button) => {
   button.addEventListener('click', enterApp)
 })
+
+window.addEventListener('catchme:enter-service', enterApp)
 
 // ─────────────────────────────────────────────
 // 기본 제스처 핸들러 on/off
@@ -515,9 +546,28 @@ const locationPhotoStrip = document.querySelector('#location-photo-strip')
 const PHOTO_DB_NAME = 'kaist-cat-photos'
 const PHOTO_STORE_NAME = 'photos'
 const PHOTO_GROUP_RADIUS_METERS = 35
+const PHOTO_GROUP_MAX_RADIUS_METERS = 140
+const DEFAULT_GPS_ACCURACY_METERS = 40
+const RECENT_PHOTO_SNAP_MS = 5 * 60 * 1000
+const RECENT_PHOTO_SNAP_METERS = 250
 let catPhotos = []
 const photoMarkerGroups = new Map()
 const newestPhotoFirst = (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+
+function normalizedGpsAccuracy(accuracy) {
+  if (!Number.isFinite(accuracy) || accuracy <= 0) return DEFAULT_GPS_ACCURACY_METERS
+  return clamp(accuracy, 5, 80)
+}
+
+// 두 GPS 측정의 오차 원이 겹치면 같은 촬영 장소로 본다.
+// 실내에서 위치가 튀는 상황을 위해 10m 여유를 더하되, 다른 건물까지 합쳐지지 않게 상한을 둔다.
+function photoGroupRadius(firstAccuracy, secondAccuracy) {
+  return clamp(
+    normalizedGpsAccuracy(firstAccuracy) + normalizedGpsAccuracy(secondAccuracy) + 10,
+    PHOTO_GROUP_RADIUS_METERS,
+    PHOTO_GROUP_MAX_RADIUS_METERS
+  )
+}
 
 // 큰 사진을 그대로 저장하면 휴대폰 저장 공간을 빠르게 차지하므로
 // 긴 변을 1600px로 줄인 JPEG로 보관한다.
@@ -617,6 +667,7 @@ function returnToMap() {
   catGallery.hidden = true
   locationPhotos.hidden = true
   photoPreview.removeAttribute('src')
+  window.hideCameraView?.()
 }
 
 function showLocationPhotos(photos) {
@@ -664,13 +715,14 @@ function showLocationPhotos(photos) {
   })
 }
 
-function nearestPhotoMarkerGroup(position) {
+function nearestPhotoMarkerGroup(position, accuracy) {
   let nearestGroup = null
   let nearestDistance = Infinity
 
   for (const group of photoMarkerGroups.values()) {
     const distance = distanceInMeters(position, group.position)
-    if (distance <= PHOTO_GROUP_RADIUS_METERS && distance < nearestDistance) {
+    const groupingRadius = photoGroupRadius(accuracy, group.accuracy)
+    if (distance <= groupingRadius && distance < nearestDistance) {
       nearestGroup = group
       nearestDistance = distance
     }
@@ -679,12 +731,14 @@ function nearestPhotoMarkerGroup(position) {
 }
 
 function addPhotoMarker(photo, animate = true) {
-  const existingGroup = nearestPhotoMarkerGroup(photo.position)
+  const photoAccuracy = normalizedGpsAccuracy(photo.accuracy)
+  const existingGroup = nearestPhotoMarkerGroup(photo.position, photoAccuracy)
 
   if (existingGroup) {
     existingGroup.photos.push(photo)
     existingGroup.photos.sort(newestPhotoFirst)
     existingGroup.count = existingGroup.photos.length
+    existingGroup.accuracy = Math.max(existingGroup.accuracy, photoAccuracy)
     existingGroup.badge.textContent = existingGroup.count
     existingGroup.badge.hidden = false
     existingGroup.element.setAttribute(
@@ -726,6 +780,7 @@ function addPhotoMarker(photo, animate = true) {
     representativeCreatedAt: photo.createdAt,
     photos: [photo],
     position: photo.position,
+    accuracy: photoAccuracy,
     element,
     image,
     badge,
@@ -766,18 +821,32 @@ function distanceInMeters(from, to) {
 // 촬영 시간과 관계없이 기존 사진 중 GPS 오차 범위 안의 가장 가까운 위치에 맞춘다.
 function stablePhotoPosition() {
   const current = [...markerLngLat()]
-  const samePlaceRadius = clamp(userPosAccuracy * 1.5, 20, 60)
+  const currentAccuracy = normalizedGpsAccuracy(userPosAccuracy)
   let nearestPhoto = null
   let nearestDistance = Infinity
 
   for (const photo of catPhotos) {
     const distance = distanceInMeters(current, photo.position)
+    const samePlaceRadius = photoGroupRadius(currentAccuracy, photo.accuracy)
     if (distance <= samePlaceRadius && distance < nearestDistance) {
       nearestPhoto = photo
       nearestDistance = distance
     }
   }
-  return nearestPhoto ? [...nearestPhoto.position] : current
+  if (nearestPhoto) return [...nearestPhoto.position]
+
+  // 휴대폰 GPS가 순간적으로 크게 튀더라도, 짧은 시간 안에 같은 자리에서
+  // 연속 촬영한 사진은 별개의 장소로 갈라지지 않게 최근 위치에 맞춘다.
+  const mostRecentPhoto = catPhotos[0]
+  if (mostRecentPhoto) {
+    const elapsed = Date.now() - Date.parse(mostRecentPhoto.createdAt)
+    const distance = distanceInMeters(current, mostRecentPhoto.position)
+    if (elapsed <= RECENT_PHOTO_SNAP_MS && distance <= RECENT_PHOTO_SNAP_METERS) {
+      return [...mostRecentPhoto.position]
+    }
+  }
+
+  return current
 }
 
 function photoDateLabel(isoDate) {
@@ -825,22 +894,30 @@ async function restorePhotos() {
   }
 }
 
-// 버튼을 누르면 다른 화면을 모두 닫고 폰 기본 카메라(또는 사진 선택)를 연다.
+// 버튼을 누르면 다른 화면을 모두 닫고 실제 카메라 뷰파인더를 연다.
 cameraBtn.addEventListener('click', () => {
   returnToMap()
-  cameraInput.click()
+  if (window.showCameraView) {
+    window.showCameraView()
+  } else {
+    cameraInput.click()
+  }
 })
 
-// 사진을 찍거나 고르면 현재 위치와 함께 지도 및 내 고양이에 저장
-cameraInput.addEventListener('change', async () => {
-  const file = cameraInput.files?.[0]
+// 뷰파인더에서 촬영했거나 기본 카메라/앨범에서 고른 사진을 공통 처리한다.
+async function processCapturedFile(file) {
   if (!file) return
-  // 카메라의 '확인/사진 사용' 직후 가장 먼저 지도 화면을 복구한다.
   returnToMap()
 
   try {
     // 시작 직후 촬영해도 기존 사진 복원 작업이 새 사진을 덮어쓰지 않게 기다린다.
     await photoRestorePromise
+    // 첫 촬영이 기본 좌표에 저장되는 GPS 오류를 막는다.
+    const hasPhotoPosition = await refreshPositionForPhoto()
+    if (!hasPhotoPosition) {
+      window.alert('사진 위치를 확인할 수 없습니다. 위치 권한을 허용한 뒤 다시 촬영해 주세요.')
+      return
+    }
     let dataUrl
     try {
       dataUrl = await imageFileToDataUrl(file)
@@ -852,6 +929,7 @@ cameraInput.addEventListener('change', async () => {
       id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
       dataUrl,
       position: stablePhotoPosition(),
+      accuracy: normalizedGpsAccuracy(userPosAccuracy),
       createdAt: new Date().toISOString(),
     }
 
@@ -870,6 +948,14 @@ cameraInput.addEventListener('change', async () => {
   } finally {
     cameraInput.value = '' // 연속 촬영과 같은 사진 재선택을 허용
   }
+}
+
+cameraInput.addEventListener('change', () => {
+  processCapturedFile(cameraInput.files?.[0])
+})
+
+window.addEventListener('catchme:camera-captured', (event) => {
+  processCapturedFile(event.detail?.file)
 })
 
 function closePhoto() {
