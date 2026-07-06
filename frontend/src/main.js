@@ -2,15 +2,17 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './style.css'
 import { addFlowerDecorations } from './FlowerDecorations.js'
+import { createAnimatedModelLayer } from './model-layer.js'
 
 // KAIST 본원 (대전) 중심 좌표: [경도, 위도]
 const KAIST_CENTER = [127.3628, 36.3721]
 
-// 초기: 캠퍼스 전체가 한눈에 보이는 시점 (줌을 낮추고 살짝 위에서 내려다봄)
+// 초기: 캠퍼스만 화면에 담기는 시점 (캠퍼스 밖 불필요한 지역은 보이지 않게)
+// 세로로 긴 폰 화면에서 서쪽 기숙사 지역까지 담기게 중심을 살짝 서쪽으로 둔다.
 const OVERVIEW_VIEW = {
-  center: KAIST_CENTER,
-  zoom: 13.8,
-  pitch: 45,
+  center: [127.3623, 36.3699],
+  zoom: 14.1,
+  pitch: 25,
   bearing: -20,
 }
 
@@ -21,9 +23,10 @@ const FOLLOW_MIN_ZOOM = 16 // 가장 축소(카메라 최대 높이)
 const FOLLOW_MAX_ZOOM = 20 // 가장 확대(카메라 최저 높이)
 const FOLLOW_PITCH_MIN = 15 // 최대 높이일 때 각도(거의 수직으로 내려다봄)
 const FOLLOW_PITCH_MAX = 72 // 확대일 때 각도(옆에서, maxPitch 75 이내)
-const FOLLOW_START_ZOOM = 19 // 진입 시 줌
+const FOLLOW_START_ZOOM = FOLLOW_MAX_ZOOM // 진입부터 하늘이 가장 많이 보이는 최대 pitch(72°)
 const ORBIT_ROT_SPEED = 0.4 // 한 손가락 스와이프 1px당 회전 각도(도)
 const PINCH_SENSITIVITY = 2.4 // 핀치 확대/축소 감도(클수록 민감)
+const SWIPE_DEAD_ZONE_PX = 8 // 이만큼 움직이기 전에는 탭으로 간주 (튕김 방지)
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -31,13 +34,16 @@ const map = new maplibregl.Map({
   style: '/monument-style.json',
   ...OVERVIEW_VIEW,
   maxPitch: 75,
-  // 캠퍼스 주변을 크게 벗어나지 못하게 제한 (선택 사항)
+  minZoom: 13.9, // 캠퍼스 밖이 훤히 보일 만큼 축소되지 않게
+  // 캠퍼스를 크게 벗어나지 못하게 제한 (서쪽 기숙사 지역까지 여유 포함)
   maxBounds: [
-    [127.32, 36.35], // 남서쪽 모서리
-    [127.41, 36.40], // 북동쪽 모서리
+    [127.344, 36.359], // 남서쪽 모서리
+    [127.378, 36.385], // 북동쪽 모서리
   ],
   attributionControl: { compact: true },
 })
+
+const animatedModelLayer = createAnimatedModelLayer(map)
 
 // 기본 더블탭 확대 동작 끄기 (우리가 직접 더블탭을 시점 전환에 사용)
 map.doubleClickZoom.disable()
@@ -108,22 +114,13 @@ async function applyTextures() {
   map.triggerRepaint() // 패턴 적용 후 즉시 다시 그리기
 }
 
-// 스타일이 파싱되면(레이어 생성 시점) 하늘 + 텍스처 적용.
+// 스타일이 파싱되면(레이어 생성 시점) 텍스처 적용.
 // 'load' 이벤트는 sprite/glyphs 로딩이 느리면 지연될 수 있어 'styledata'로 트리거.
 let sceneInited = false
 function initScene() {
   if (sceneInited) return
   if (!map.getLayer('background')) return // 아직 스타일 파싱 전
   sceneInited = true
-  // 지평선 하늘 그라데이션 (기울였을 때 게임 같은 분위기)
-  map.setSky({
-    'sky-color': '#8fd8cd',
-    'horizon-color': '#fdeedb',
-    'fog-color': '#fdeedb',
-    'sky-horizon-blend': 0.6,
-    'horizon-fog-blend': 0.7,
-    'fog-ground-blend': 0.9,
-  })
   applyTextures()
   try {
     addFlowerDecorations(map)
@@ -134,21 +131,6 @@ function initScene() {
 map.on('styledata', initScene)
 map.on('load', initScene)
 initScene()
-
-// ─────────────────────────────────────────────
-// 캐릭터 마커 (임시 디자인 — 나중에 교체 예정)
-// 카메라 높이와 지도 경사에 관계없이 화면을 향해 똑바로 세운다.
-// 서브픽셀 좌표를 사용해 확대/축소 중 픽셀 반올림으로 인한 떨림을 줄인다.
-// ─────────────────────────────────────────────
-const characterEl = document.createElement('div')
-characterEl.className = 'character-marker'
-const characterMarker = new maplibregl.Marker({
-  element: characterEl,
-  pitchAlignment: 'viewport',
-  rotationAlignment: 'viewport',
-  subpixelPositioning: true,
-})
-let characterMarkerAdded = false
 
 let userPos = null // 최근 GPS 위치 [lng, lat]
 let userPosAccuracy = Infinity // 최근 GPS 정확도(미터)
@@ -194,14 +176,11 @@ function startPositionTracking() {
     (pos) => {
       userPos = [pos.coords.longitude, pos.coords.latitude]
       userPosAccuracy = pos.coords.accuracy
-      characterMarker.setLngLat(userPos)
-      if (!characterMarkerAdded) {
-        characterMarker.addTo(map)
-        characterMarkerAdded = true
-      }
-      // 마커 시점일 때는 카메라도 내 위치를 따라감
+      animatedModelLayer.setAvatarPosition(userPos)
+      // 마커 시점일 때는 카메라도 내 위치를 따라감.
+      // GPS 좌표가 튀어도 화면이 순간이동하지 않게 부드럽게 이동한다.
       if (isFollowing && !isTransitioning) {
-        map.setCenter(userPos)
+        map.easeTo({ center: userPos, duration: 800, essential: true })
       }
     },
     (err) => console.warn('위치 정보를 가져오지 못했습니다.', err),
@@ -233,13 +212,30 @@ function setDefaultGestures(enabled) {
 // ─────────────────────────────────────────────
 // 시점 토글: 마커 시점 ↔ 전체 지도 시점
 // ─────────────────────────────────────────────
+// 추적 시점에서 카메라 초점을 화면 아래로 내리는 위쪽 패딩.
+// 미쿠가 화면 하단에 서고 그 위로 풍경이 펼쳐지는 게임 카메라 구도가 된다.
+function followPadding() {
+  return {
+    top: Math.round(map.getContainer().clientHeight * 0.5),
+    bottom: 0,
+    left: 0,
+    right: 0,
+  }
+}
+
 function toggleView() {
+  if (isTransitioning) return // 전환 중 더블탭이 또 들어와 카메라가 튕기는 것 방지
   isFollowing = !isFollowing
   isTransitioning = true
+  animatedModelLayer.setFollowing(isFollowing)
 
   if (isFollowing) {
-    // 마커(내 위치) 시점으로: 궤도 카메라 초기화 + 기본 제스처 끄기
-    orbitBearing = 0
+    // 마커(내 위치) 시점으로: 궤도 카메라 초기화 + 기본 제스처 끄기.
+    // 이동+줌인을 동시에 하면 easeTo(직선 보간)는 끝에서 옆으로 휙 쓸린다 →
+    // flyTo의 최적 경로를 쓰되, 곡선 계수를 낮춰(기본 1.42) 뒤로 물러나는
+    // 출렁임 없이 완만하게 파고들게 한다.
+    // 방위는 현재 값을 유지해 줌인 중 화면이 돌지 않게 한다.
+    orbitBearing = map.getBearing()
     orbitZoom = FOLLOW_START_ZOOM
     setDefaultGestures(false)
     map.flyTo({
@@ -247,13 +243,22 @@ function toggleView() {
       zoom: orbitZoom,
       bearing: orbitBearing,
       pitch: pitchForZoom(orbitZoom),
+      padding: followPadding(),
       duration: 1500,
+      curve: 1.1,
       essential: true,
     })
   } else {
-    // 전체 캠퍼스 시점으로 복귀: 기본 제스처 다시 켜기
+    // 전체 캠퍼스 시점으로 복귀: 기본 제스처 다시 켜기.
+    // 1인칭에서 돌려놓은 방위도 기본 시점(-20°)으로 함께 되돌린다.
+    // 팬+줌아웃+회전은 flyTo의 상승 곡선에 맡기면 자연스럽게 섞인다.
     setDefaultGestures(true)
-    map.flyTo({ ...OVERVIEW_VIEW, duration: 1500, essential: true })
+    map.flyTo({
+      ...OVERVIEW_VIEW,
+      padding: { top: 0, bottom: 0, left: 0, right: 0 },
+      duration: 1500,
+      essential: true,
+    })
   }
 }
 
@@ -265,9 +270,13 @@ function toggleView() {
 const gestureTarget = map.getCanvasContainer()
 let oneFingerActive = false
 let lastTouchX = 0
+let swipeDistance = 0 // 이번 터치에서 누적된 가로 이동량(px)
 let pinchStartDist = 0
 let pinchStartZoom = 0
-let gestureMoved = false // 스와이프/핀치였으면 뒤따르는 click(더블탭)을 무시
+// 스와이프/핀치 직후의 click만 무시하기 위한 마지막 제스처 시각.
+// (플래그 방식은 스와이프 뒤 click이 안 오면 다음 더블탭의 첫 탭을 잡아먹는다)
+let lastGestureTime = 0
+const GESTURE_CLICK_IGNORE_MS = 300
 
 function touchDistance(touches) {
   const dx = touches[0].clientX - touches[1].clientX
@@ -281,13 +290,13 @@ gestureTarget.addEventListener(
     if (!isFollowing || isTransitioning) return
     if (e.touches.length === 1) {
       oneFingerActive = true
-      gestureMoved = false
+      swipeDistance = 0
       lastTouchX = e.touches[0].clientX
     } else if (e.touches.length === 2) {
       oneFingerActive = false
       pinchStartDist = touchDistance(e.touches)
       pinchStartZoom = orbitZoom
-      gestureMoved = true // 핀치는 탭이 아님
+      lastGestureTime = Date.now() // 핀치는 탭이 아님
     }
   },
   { passive: false }
@@ -301,9 +310,13 @@ gestureTarget.addEventListener(
       const x = e.touches[0].clientX
       const dx = x - lastTouchX
       lastTouchX = x
-      // 손가락을 오른쪽으로 밀면 시계 방향으로 회전 (필요하면 부호만 뒤집으면 됨)
-      orbitBearing -= dx * ORBIT_ROT_SPEED
-      if (Math.abs(dx) > 1) gestureMoved = true
+      // 탭할 때의 미세한 손 떨림이 회전(jumpTo)으로 이어져 화면이 튕기지 않게,
+      // 누적 이동량이 데드존을 넘은 뒤부터 회전을 시작한다.
+      swipeDistance += Math.abs(dx)
+      if (swipeDistance < SWIPE_DEAD_ZONE_PX) return
+      lastGestureTime = Date.now()
+      // 손가락을 미는 방향으로 미쿠가 도는 것처럼 보이게 회전
+      orbitBearing += dx * ORBIT_ROT_SPEED
       applyOrbit()
       e.preventDefault()
     } else if (e.touches.length === 2) {
@@ -314,6 +327,7 @@ gestureTarget.addEventListener(
         FOLLOW_MIN_ZOOM,
         FOLLOW_MAX_ZOOM
       )
+      lastGestureTime = Date.now()
       applyOrbit()
       e.preventDefault()
     }
@@ -340,11 +354,8 @@ let lastTapTime = 0
 let lastTapPoint = null
 
 map.on('click', (e) => {
-  // 방금 스와이프/핀치였다면 그 뒤의 click은 무시 (실수 토글 방지)
-  if (gestureMoved) {
-    gestureMoved = false
-    return
-  }
+  // 스와이프/핀치 직후의 click만 무시 (실수 토글 방지)
+  if (Date.now() - lastGestureTime < GESTURE_CLICK_IGNORE_MS) return
   const now = Date.now()
   const dt = now - lastTapTime
   const dist = lastTapPoint
@@ -572,7 +583,7 @@ function addPhotoMarker(photo, animate = true) {
   }
 
   const element = document.createElement('button')
-  element.className = 'photo-marker'
+  element.className = 'photo-marker photo-marker--model'
   element.type = 'button'
   element.setAttribute('aria-label', '이 위치에서 찍은 고양이 사진 1장 보기')
 
@@ -601,6 +612,7 @@ function addPhotoMarker(photo, animate = true) {
     badge,
   }
   photoMarkerGroups.set(photo.id, group)
+  animatedModelLayer.addCat(photo.id, photo.position)
 
   element.addEventListener('click', (event) => {
     event.stopPropagation()

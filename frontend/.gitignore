@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 이 앱에서 직접 제공하는 3D 캐릭터 에셋
+!public/models/
+!public/models/*.glb
