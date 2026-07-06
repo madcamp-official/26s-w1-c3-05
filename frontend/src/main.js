@@ -4,6 +4,10 @@ import { addFlowerDecorations } from './FlowerDecorations.js'
 import { createAnimatedModelLayer } from './model-layer.js'
 import { MOCK_USER_AVATAR, fetchMockCatActors, fetchMockMapObjects } from './mock-map-api.js'
 
+// 백엔드 API 주소. 배포 시 VITE_API_BASE_URL 환경변수로 주입한다.
+// (미설정 시 로컬 개발용 백엔드로 fallback)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000'
+
 // KAIST 본원 (대전) 중심 좌표: [경도, 위도]
 const KAIST_CENTER = [127.3628, 36.3721]
 
@@ -897,7 +901,7 @@ setTimeout(() => {
 }, 5000)
 
 // 백엔드 연동 테스트용 코드
-fetch('http://localhost:4000/api/health')
+fetch(`${API_BASE_URL}/api/health`)
   .then((res) => res.json())
   .then((data) => {
     console.log('🎉 백엔드 서버 연동 성공:', data)
@@ -905,4 +909,3 @@ fetch('http://localhost:4000/api/health')
   .catch((err) => {
     console.error('❌ 백엔드 서버 연동 실패:', err)
   })
-

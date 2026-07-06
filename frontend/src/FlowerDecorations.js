@@ -9,11 +9,13 @@ export const FLOWER_DECORATION_CONFIG = {
   layerId: 'flower-decorations',
   count: 30000,
   seed: 20260704,
+  // 오프닝 전체 지도에서 보이는 범위 + pan 가능한 최대 범위(maxBounds)를 모두 덮도록 설정.
+  // (이보다 좁으면 남서·북·남동 등 화면에 보이는 구역에 꽃이 비어 보인다.)
   bounds: {
-    west: 127.3586,
-    south: 36.3682,
-    east: 127.3674,
-    north: 36.3758,
+    west: 127.344,
+    south: 36.359,
+    east: 127.378,
+    north: 36.39,
   },
   widthMetersRange: { min: 1.5, max: 2.0},
   icons: [
@@ -24,11 +26,8 @@ export const FLOWER_DECORATION_CONFIG = {
   ],
   // 아바타(사용자) 위치 근처를 더 촘촘하게 — center가 null이면 bounds의 중심(=KAIST_CENTER 부근)을 기준으로 삼는다.
   // falloffRadiusMeters 밖으로 멀어질수록 밀도가 baseline 비율까지 옅어진다.
-  densityBias: {
-    center: null,
-    falloffRadiusMeters: 220,
-    baseline: 0.15,
-  },
+  // null이면 중심 집중 없이 캠퍼스 전체에 균일(random) 분포로 꽃을 뿌린다.
+  densityBias: null,
   // 이 레이어들(예: 강/호수) 위에는 꽃을 배치하지 않는다.
   avoidLayers: ['water'],
 }
