@@ -30,6 +30,10 @@ import type { CatVisionResult } from '../services/catVision/types.js'
 
 export const sightingsRouter = Router()
 
+// z.coerce.boolean() is Boolean(value) under the hood, so multipart/query string
+// fields like "false" coerce to true. Parse "true"/"false" text explicitly instead.
+const booleanish = z.preprocess((value) => (typeof value === 'string' ? value.toLowerCase() === 'true' : value), z.boolean())
+
 const uploadDir = resolve(process.cwd(), 'uploads')
 const cropDir = join(uploadDir, 'crops')
 mkdirSync(cropDir, { recursive: true })
@@ -97,8 +101,8 @@ sightingsRouter.post('/sightings', requireAuth, upload.single('image'), async (r
       latitude: z.coerce.number().min(-90).max(90),
       longitude: z.coerce.number().min(-180).max(180),
       catId: z.coerce.number().int().positive().optional(),
-      isCat: z.coerce.boolean().optional(),
-      forceConfirmation: z.coerce.boolean().optional(),
+      isCat: booleanish.optional(),
+      forceConfirmation: booleanish.optional(),
       imageUrl: z.string().url().optional(),
     }).parse(req.body)
 
@@ -268,6 +272,9 @@ sightingsRouter.post('/sightings/:photoId/confirm-cat', requireAuth, async (req:
     if (!photo || photo.user_id !== user.id) throw new HttpError(404, '사진을 찾을 수 없습니다.', 'NOT_FOUND')
     if (photo.identification_status !== 'needs_user_confirmation') throw new HttpError(400, '후보 선택이 필요한 사진이 아닙니다.', 'VALIDATION_ERROR')
 
+    // pg returns TIMESTAMPTZ columns as Date objects; normalize to ISO for re-insertion.
+    const takenAt = new Date(photo.taken_at).toISOString()
+
     if (body.isNewCatCandidate || body.selectedCatId == null) {
       const created = await createCandidateCatFromPhoto({
         userId: user.id,
@@ -276,7 +283,7 @@ sightingsRouter.post('/sightings/:photoId/confirm-cat', requireAuth, async (req:
         latitude: Number(photo.latitude),
         longitude: Number(photo.longitude),
         zoneId: photo.zone_id,
-        takenAt: String(photo.taken_at),
+        takenAt,
         confidence: photo.cat_identification_confidence,
       })
       await setEmbeddingCatForPhoto(photoId, created.cat.id)
@@ -296,8 +303,8 @@ sightingsRouter.post('/sightings/:photoId/confirm-cat', requireAuth, async (req:
     await updatePhotoMatch(photoId, { catId: cat.id, confidence: selected.final_score, status: 'matched' })
     await setEmbeddingCatForPhoto(photoId, cat.id)
     await setCatModelKeyIfNull(cat.id, resolveModelKey(cat, null))
-    const createdSighting = await createSighting({ catId: cat.id, userId: user.id, photoId, latitude: Number(photo.latitude), longitude: Number(photo.longitude), zoneId: photo.zone_id, seenAt: String(photo.taken_at) })
-    const { isNew } = await upsertCollection({ userId: user.id, catId: cat.id, photoId, seenAt: String(photo.taken_at) })
+    const createdSighting = await createSighting({ catId: cat.id, userId: user.id, photoId, latitude: Number(photo.latitude), longitude: Number(photo.longitude), zoneId: photo.zone_id, seenAt: takenAt })
+    const { isNew } = await upsertCollection({ userId: user.id, catId: cat.id, photoId, seenAt: takenAt })
     res.json({ detectionStatus: 'matched', photoId: String(photoId), sightingId: String(createdSighting.id), cat: { id: String(cat.id), name: cat.name, isNewCollection: isNew } })
   } catch (error) {
     next(error)
