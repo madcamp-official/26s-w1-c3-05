@@ -52,6 +52,8 @@ const CAT_PERSPECTIVE_OFFSET_METERS = 55
 const CAT_PERSPECTIVE_MIN_SCALE = 0.55
 const CAT_PERSPECTIVE_MAX_SCALE = 1.45
 const CAT_YAW_FOLLOW_FACTOR = 0.58
+const CAT_WORLD_GROUND_SINK = 0.016
+const BUSH_WORLD_GROUND_SINK = 0.008
 
 function distanceMeters(from, to) {
   const radians = (degrees) => (degrees * Math.PI) / 180
@@ -66,7 +68,11 @@ function distanceMeters(from, to) {
   return 2 * earthRadius * Math.asin(Math.sqrt(a))
 }
 
-const CAT_WORLD_HEIGHT_METERS = 5.5
+const CAT_WORLD_HEIGHT_METERS = 20.0
+const CAT_WORLD_CLOSE_HEIGHT_METERS = 4.68
+const CAT_WORLD_SCALE_ZOOM_START = 14.1
+const CAT_WORLD_SCALE_ZOOM_END = 18
+const CAT_WORLD_VISIBILITY_DURATION_SECONDS = 0.45
 
 function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemplate, bushAnimations }) {
   return {
@@ -76,6 +82,16 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
     actors: [],
     instances: new Map(),
     originCoordinate: null,
+    isFollowing: false,
+    visibilityProgress: 0,
+    visibilityTarget: 0,
+
+    setFollowing(isFollowing) {
+      this.isFollowing = Boolean(isFollowing)
+      this.visibilityTarget = this.isFollowing ? 1 : 0
+      if (this.scene) this.scene.visible = true
+      this.map?.triggerRepaint?.()
+    },
 
     setActors(actors) {
       this.actors = actors
@@ -91,10 +107,21 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
         null
     },
 
+    modelHeightMeters() {
+      const zoom = this.map?.getZoom?.() ?? CAT_WORLD_SCALE_ZOOM_START
+      const t = clamp(
+        (zoom - CAT_WORLD_SCALE_ZOOM_START) / (CAT_WORLD_SCALE_ZOOM_END - CAT_WORLD_SCALE_ZOOM_START),
+        0,
+        1
+      )
+      return CAT_WORLD_HEIGHT_METERS + (CAT_WORLD_CLOSE_HEIGHT_METERS - CAT_WORLD_HEIGHT_METERS) * t
+    },
+
     onAdd(map, gl) {
       this.map = map
       this.camera = new THREE.Camera()
       this.scene = new THREE.Scene()
+      this.scene.visible = this.visibilityProgress > 0 || this.visibilityTarget > 0
       this.clock = new THREE.Clock()
       this.mixers = []
 
@@ -131,7 +158,12 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
         [Number(actor.lng), Number(actor.lat)],
         Number(actor.heightOffsetMeters ?? 0)
       )
-      const scale = coordinate.meterInMercatorCoordinateUnits() * CAT_WORLD_HEIGHT_METERS * Number(actor.modelScale ?? 1)
+      const visibilityScale = this.visibilityProgress * this.visibilityProgress * (3 - 2 * this.visibilityProgress)
+      const scale =
+        coordinate.meterInMercatorCoordinateUnits() *
+        this.modelHeightMeters() *
+        Number(actor.modelScale ?? 1) *
+        visibilityScale
       const matrix = new THREE.Matrix4()
         .makeTranslation(
           coordinate.x - this.originCoordinate.x,
@@ -155,6 +187,7 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
         if (!instance) {
           const isBush = actor.modelType === 'bush'
           const model = cloneModel(isBush && bushTemplate ? bushTemplate : template)
+          model.position.y = -(isBush ? BUSH_WORLD_GROUND_SINK : CAT_WORLD_GROUND_SINK)
           const root = new THREE.Group()
           root.matrixAutoUpdate = false
           root.add(model)
@@ -196,7 +229,17 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
 
     render(_gl, args) {
       if (!this.renderer || !this.scene || !this.camera) return
+      const delta = Math.min(this.clock.getDelta(), 0.05)
+      const visibilityStep = delta / CAT_WORLD_VISIBILITY_DURATION_SECONDS
+      this.visibilityProgress =
+        this.visibilityTarget > this.visibilityProgress
+          ? Math.min(this.visibilityTarget, this.visibilityProgress + visibilityStep)
+          : Math.max(this.visibilityTarget, this.visibilityProgress - visibilityStep)
+      const shouldRender = this.visibilityProgress > 0 || this.visibilityTarget > 0
+      this.scene.visible = shouldRender
+      if (!shouldRender) return
       if (!this.originCoordinate) this.updateOrigin()
+      this.syncActors()
       const mapMatrix = new THREE.Matrix4().fromArray(args.defaultProjectionData.mainMatrix)
       const originMatrix = new THREE.Matrix4().makeTranslation(
         this.originCoordinate.x,
@@ -205,7 +248,6 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
       )
       this.camera.projectionMatrix = mapMatrix.multiply(originMatrix)
 
-      const delta = Math.min(this.clock.getDelta(), 0.05)
       for (const mixer of this.mixers) mixer.update(delta)
 
       this.renderer.resetState()
@@ -227,13 +269,16 @@ export function createAnimatedModelLayer(map) {
     pendingBuildingActors: [],
     mixers: [],
     ready: false,
+    isFollowing: false,
 
     setAvatarPosition(position) {
       this.avatarPosition = [...position]
       if (this.avatarInstance) this.avatarInstance.position = [...position]
     },
 
-    setFollowing() {
+    setFollowing(isFollowing) {
+      this.isFollowing = Boolean(isFollowing)
+      this.catWorldLayer?.setFollowing(this.isFollowing)
       // 모델은 항상 지도 좌표·지도 방향에 고정. 시점 전환 연출(줌·pitch·패딩)은
       // main.js의 easeTo가 한 번의 애니메이션으로 담당한다.
     },
@@ -338,59 +383,12 @@ export function createAnimatedModelLayer(map) {
       const addLayer = () => {
         if (this.map.getLayer(this.catWorldLayer.id)) return
         this.map.addLayer(this.catWorldLayer)
+        this.catWorldLayer.setFollowing(this.isFollowing)
         this.catWorldLayer.setActors(this.pendingCatActors)
       }
 
       if (this.map.loaded()) addLayer()
       else this.map.once('idle', addLayer)
-    },
-
-    syncCatActors() {
-      const activeIds = new Set()
-
-      for (const actor of this.pendingCatActors) {
-        if (!actor.modelUrl) continue
-        const id = String(actor.catId)
-        activeIds.add(id)
-
-        const position = [Number(actor.lng), Number(actor.lat)]
-        const existing = this.catActors.get(id)
-        if (existing) {
-          existing.position = position
-          existing.heightOffsetMeters = Number(actor.heightOffsetMeters ?? 0)
-          existing.movementRadiusMeters = Number(actor.movementRadiusMeters ?? 0)
-          existing.fixedScreenScale = true
-          existing.keepUpright = true
-          existing.distancePerspective = true
-          existing.yawFollowFactor = CAT_YAW_FOLLOW_FACTOR
-          existing.fallbackDistanceMeters = Number(actor.distanceMeters ?? 100)
-          existing.actor = actor
-          continue
-        }
-
-        const instance = this.createInstance(
-          this.catTemplate,
-          this.catAnimations,
-          actor.animationKey,
-          position,
-          72 * Number(actor.modelScale ?? 1)
-        )
-        instance.heightOffsetMeters = Number(actor.heightOffsetMeters ?? 0)
-        instance.movementRadiusMeters = Number(actor.movementRadiusMeters ?? 0)
-        instance.fixedScreenScale = true
-        instance.keepUpright = true
-        instance.distancePerspective = true
-        instance.yawFollowFactor = CAT_YAW_FOLLOW_FACTOR
-        instance.fallbackDistanceMeters = Number(actor.distanceMeters ?? 100)
-        instance.actor = actor
-        this.catActors.set(id, instance)
-      }
-
-      for (const [id, instance] of this.catActors) {
-        if (activeIds.has(id)) continue
-        this.scene.remove(instance.anchor)
-        this.catActors.delete(id)
-      }
     },
 
     setBuildingActors(actors) {
@@ -674,7 +672,7 @@ export function createAnimatedModelLayer(map) {
         this.findIdleClip(this.avatarAnimations)?.name ?? 'idle',
         this.avatarPosition,
         32,
-        { withShadow: true, withRangeRing: true }
+        { withShadow: false, withRangeRing: false }
       )
     },
 
@@ -740,6 +738,7 @@ export function createAnimatedModelLayer(map) {
 
       if (this.avatarPosition && !this.avatarInstance) this.createAvatarInstance()
       if (this.avatarInstance) this.updateScreenPosition(this.avatarInstance)
+      this.buildingActors.forEach((instance) => this.updateScreenPosition(instance))
 
       const delta = Math.min(this.clock.getDelta(), 0.05)
       for (const mixer of this.mixers) mixer.update(delta)

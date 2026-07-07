@@ -1693,7 +1693,12 @@ body {
 
 /* 3D 고양이와 겹쳐도 사진 아이콘과 클릭 영역은 항상 위에 둔다. */
 .maplibregl-marker {
-  z-index: 2;
+  z-index: 40;
+}
+
+.mock-cat-map-marker {
+  position: relative;
+  z-index: 90;
 }
 
 .mock-building-marker {

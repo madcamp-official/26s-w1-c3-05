@@ -27,6 +27,40 @@
       </div>
     </section>
 
+    <!-- ⚠️ TEMP: 백엔드 없이 지도 바로 보기 (지도 꾸미기 작업용) — 배포 전 이 블록 통째로 삭제 -->
+    <button id="temp-map-preview" type="button">🗺️ 지도 미리보기 (임시)</button>
+    <style>
+      #temp-map-preview {
+        position: fixed;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
+        z-index: 9999;
+        padding: 12px 20px;
+        border: 2px dashed #d9534f;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.92);
+        color: #d9534f;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+      }
+    </style>
+    <script>
+      document.querySelector('#temp-map-preview').addEventListener('click', () => {
+        // 로그인/자동 1인칭 전환을 건너뛰고, 웰컴 오버레이만 걷어내
+        // 그 아래 깔려 있던 전체 지도(overview 탑다운)를 그대로 본다.
+        document.querySelector('#welcome')?.remove()
+        document.querySelector('#email-auth')?.setAttribute('hidden', '')
+        document.querySelector('#signup')?.setAttribute('hidden', '')
+        document.querySelector('#temp-map-preview').remove()
+        window.dispatchEvent(new CustomEvent('catchme:preview-map'))
+        window.dispatchEvent(new Event('resize')) // 지도 캔버스 크기 재계산
+      })
+    </script>
+    <!-- /TEMP -->
+
     <section id="email-auth" class="email-auth" aria-labelledby="email-auth-title" hidden>
       <div class="email-auth-decoration email-auth-decoration--left" aria-hidden="true">✿</div>
       <div class="email-auth-decoration email-auth-decoration--right" aria-hidden="true">✿</div>

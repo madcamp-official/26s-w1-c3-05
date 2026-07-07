@@ -7,28 +7,44 @@ import { MercatorCoordinate } from 'maplibre-gl'
 // ─────────────────────────────────────────────
 export const FLOWER_DECORATION_CONFIG = {
   layerId: 'flower-decorations',
-  count: 30000,
+  count: 7000,
   seed: 20260704,
   bounds: {
-    west: 127.3586,
-    south: 36.3682,
-    east: 127.3674,
-    north: 36.3758,
+    west: 127.3544,
+    south: 36.3626,
+    east: 127.3732,
+    north: 36.3860,
   },
-  widthMetersRange: { min: 1.5, max: 2.0},
+  // 스크린샷의 파란 경계를 넉넉하게 포함한 캠퍼스 안쪽 영역.
+  // 경계가 애매한 곳은 포함되도록 바깥쪽으로 여유를 두었다.
+  includePolygon: [
+    [127.3555, 36.3629],
+    [127.3548, 36.3650],
+    [127.3547, 36.3672],
+    [127.3551, 36.3695],
+    [127.3566, 36.3721],
+    [127.3578, 36.3778],
+    [127.3603, 36.3822],
+    [127.3638, 36.3852],
+    [127.3675, 36.3842],
+    [127.3697, 36.3788],
+    [127.3706, 36.3725],
+    [127.3720, 36.3693],
+    [127.3724, 36.3664],
+    [127.3700, 36.3637],
+    [127.3662, 36.3629],
+    [127.3620, 36.3628],
+    [127.3582, 36.3628],
+  ],
+  distribution: 'even',
+  widthMetersRange: { min: 1.25, max: 1.75 },
   icons: [
     { url: '/decorations/flower-pink.png', weight: 3 },
     { url: '/decorations/flower-white.png', weight: 2 },
     { url: '/decorations/flower-yellow-cluster.png', weight: 3 },
     { url: '/decorations/flower-mixed-cluster.png', weight: 2 },
   ],
-  // 아바타(사용자) 위치 근처를 더 촘촘하게 — center가 null이면 bounds의 중심(=KAIST_CENTER 부근)을 기준으로 삼는다.
-  // falloffRadiusMeters 밖으로 멀어질수록 밀도가 baseline 비율까지 옅어진다.
-  densityBias: {
-    center: null,
-    falloffRadiusMeters: 220,
-    baseline: 0.15,
-  },
+  densityBias: null,
   // 이 레이어들(예: 강/호수) 위에는 꽃을 배치하지 않는다.
   avoidLayers: ['water'],
 }
@@ -68,7 +84,54 @@ function densityWeight(distanceMeters, densityBias) {
   return densityBias.baseline + (1 - densityBias.baseline) * Math.exp(-t * t)
 }
 
+function isInsideIncludePolygon(lng, lat, config) {
+  if (!config.includePolygon?.length) return true
+  return pointInRing(lng, lat, config.includePolygon)
+}
+
+function generateEvenFlowers(config, isOnAvoidedLayer) {
+  const random = seededRandom(config.seed)
+  const { west, south, east, north } = config.bounds
+  const { min, max } = config.widthMetersRange
+  const lngSpan = east - west
+  const latSpan = north - south
+  const aspect = lngSpan / latSpan
+  const oversample = 1.75
+  const columns = Math.ceil(Math.sqrt(config.count * aspect) * oversample)
+  const rows = Math.ceil(Math.sqrt(config.count / aspect) * oversample)
+  const candidates = []
+  const flowers = []
+
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const lng = west + ((column + 0.03 + random() * 0.94) / columns) * lngSpan
+      const lat = south + ((row + 0.03 + random() * 0.94) / rows) * latSpan
+      if (!isInsideIncludePolygon(lng, lat, config)) continue
+      if (isOnAvoidedLayer(lng, lat)) continue
+
+      candidates.push([lng, lat])
+    }
+  }
+
+  const count = Math.min(config.count, candidates.length)
+  const step = candidates.length / count
+  for (let i = 0; i < count; i++) {
+    const index = Math.min(candidates.length - 1, Math.floor((i + 0.5) * step))
+    flowers.push({
+      lngLat: candidates[index],
+      iconUrl: weightedIcon(random, config.icons),
+      widthMeters: min + random() * (max - min),
+    })
+  }
+
+  return flowers
+}
+
 function generateFlowers(config, isOnAvoidedLayer) {
+  if (config.distribution === 'even') {
+    return generateEvenFlowers(config, isOnAvoidedLayer)
+  }
+
   const random = seededRandom(config.seed)
   const { west, south, east, north } = config.bounds
   const { min, max } = config.widthMetersRange
@@ -88,6 +151,7 @@ function generateFlowers(config, isOnAvoidedLayer) {
         const distance = approxMetersBetween(center[0], center[1], lng, lat)
         if (random() > densityWeight(distance, densityBias)) continue // 중심에서 먼 곳일수록 확률적으로 재추첨
       }
+      if (!isInsideIncludePolygon(lng, lat, config)) continue
       if (isOnAvoidedLayer(lng, lat)) continue // 강/물 위면 재추첨
 
       flowers.push({

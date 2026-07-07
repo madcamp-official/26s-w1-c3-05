@@ -6,6 +6,76 @@ import { API_BASE_URL, authFetch, hasSession } from './auth.js'
 
 // 아직 GPS를 못 받았을 때 지도 조회에 쓰는 기본 위치 (KAIST 중앙도서관 부근).
 const DEFAULT_QUERY_POSITION = { lat: 36.3727, lng: 127.3602 }
+const PREVIEW_CAT_ACTORS = [
+  {
+    catId: 'preview-mango',
+    displayType: 'discovered_cat',
+    name: '망고',
+    offsetEastMeters: 10,
+    offsetNorthMeters: 18,
+    lat: DEFAULT_QUERY_POSITION.lat,
+    lng: DEFAULT_QUERY_POSITION.lng,
+    distanceMeters: 0,
+    zoneName: '중앙도서관',
+    modelType: 'cat',
+    modelUrl: '/models/cat.glb',
+    modelScale: 1,
+    animationKey: 'sit',
+    heightOffsetMeters: 0,
+    mainImageUrl: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&w=160&q=70',
+  },
+  {
+    catId: 'preview-berry-bush',
+    displayType: 'undiscovered_recent',
+    name: null,
+    offsetEastMeters: -14,
+    offsetNorthMeters: 14,
+    lat: DEFAULT_QUERY_POSITION.lat,
+    lng: DEFAULT_QUERY_POSITION.lng,
+    distanceMeters: 0,
+    zoneName: 'N1',
+    modelType: 'bush',
+    modelUrl: '/models/bush_01.glb',
+    modelScale: 1,
+    animationKey: 'idle',
+    heightOffsetMeters: 0,
+    mainImageUrl: null,
+  },
+  {
+    catId: 'preview-bami',
+    displayType: 'discovered_cat',
+    name: '밤이',
+    offsetEastMeters: 18,
+    offsetNorthMeters: -12,
+    lat: DEFAULT_QUERY_POSITION.lat,
+    lng: DEFAULT_QUERY_POSITION.lng,
+    distanceMeters: 0,
+    zoneName: '생활관',
+    modelType: 'cat',
+    modelUrl: '/models/cat.glb',
+    modelScale: 1,
+    animationKey: 'sleep',
+    heightOffsetMeters: 0,
+    mainImageUrl: 'https://images.unsplash.com/photo-1543852786-1cf6624b9987?auto=format&fit=crop&w=160&q=70',
+  },
+  {
+    catId: 'preview-hidden-bush',
+    displayType: 'undiscovered_recent',
+    name: null,
+    offsetEastMeters: -20,
+    offsetNorthMeters: -16,
+    lat: DEFAULT_QUERY_POSITION.lat,
+    lng: DEFAULT_QUERY_POSITION.lng,
+    distanceMeters: 0,
+    zoneName: '산책로',
+    modelType: 'bush',
+    modelUrl: '/models/bush_01.glb',
+    modelScale: 1,
+    animationKey: 'idle',
+    heightOffsetMeters: 0,
+    mainImageUrl: null,
+  },
+]
 
 // 백엔드 API 주소. 배포 시 VITE_API_BASE_URL 환경변수로 주입한다.
 // (미설정 시 로컬 개발용 백엔드로 fallback)
@@ -52,15 +122,23 @@ const map = new maplibregl.Map({
 const animatedModelLayer = createAnimatedModelLayer(map)
 const mockBuildingMarkers = new Map()
 const catMarkers = new Map()
-const MOCK_MAP_MODE = true
+const MOCK_MAP_MODE = false
 
 // 가까이서 볼 때(follow 시점 줌 범위) 고양이 마커가 3D 모델과 겹치지 않게 위쪽으로 띄운다.
-const CAT_MARKER_CLOSE_ZOOM = FOLLOW_MIN_ZOOM
-const CAT_MARKER_DEFAULT_OFFSET = [0, 0]
-const CAT_MARKER_CLOSE_OFFSET = [0, -36]
+const CAT_MARKER_DEFAULT_OFFSET = [0, -18]
+const CAT_MARKER_FOLLOW_MIN_OFFSET = [0, -34]
+const CAT_MARKER_CLOSE_OFFSET = [0, -92]
+const CAT_MARKER_MIN_VISIBLE_ZOOM = 18.4
 
 function catMarkerOffset() {
-  return map.getZoom() >= CAT_MARKER_CLOSE_ZOOM ? CAT_MARKER_CLOSE_OFFSET : CAT_MARKER_DEFAULT_OFFSET
+  if (!isFollowing) return CAT_MARKER_DEFAULT_OFFSET
+  const t = clamp((map.getZoom() - FOLLOW_MIN_ZOOM) / (FOLLOW_MAX_ZOOM - FOLLOW_MIN_ZOOM), 0, 1)
+  const eased = t * t * (3 - 2 * t)
+  return [
+    0,
+    CAT_MARKER_FOLLOW_MIN_OFFSET[1] +
+      (CAT_MARKER_CLOSE_OFFSET[1] - CAT_MARKER_FOLLOW_MIN_OFFSET[1]) * eased,
+  ]
 }
 
 // 기본 더블탭 확대 동작 끄기 (우리가 직접 더블탭을 시점 전환에 사용)
@@ -179,12 +257,14 @@ function addMockBuildingMarker(object) {
 }
 
 function addCatMarker(cat) {
+  if (catMarkers.has(cat.catId)) return
+
   const isDiscovered = cat.displayType === 'discovered_cat'
   const marker = document.createElement('button')
   marker.type = 'button'
 
   if (isDiscovered) {
-    marker.className = 'mock-cat-info-marker'
+    marker.className = 'mock-cat-info-marker mock-cat-map-marker'
     marker.setAttribute('aria-label', `${cat.name} latest sighting`)
 
     const image = document.createElement('img')
@@ -200,14 +280,14 @@ function addCatMarker(cat) {
     marker.append(image, content)
   } else {
     // 아직 사진으로 발견하지 않은 고양이는 이름/사진 없이 "???"로만 표시한다.
-    marker.className = 'mock-cat-unknown-marker'
+    marker.className = 'mock-cat-unknown-marker mock-cat-map-marker'
     marker.setAttribute('aria-label', '아직 발견하지 않은 고양이')
     marker.textContent = '???'
   }
 
   const markerInstance = new maplibregl.Marker({
     element: marker,
-    anchor: 'top',
+    anchor: 'bottom',
     pitchAlignment: 'viewport',
     rotationAlignment: 'viewport',
     subpixelPositioning: true,
@@ -217,12 +297,37 @@ function addCatMarker(cat) {
     .addTo(map)
 
   catMarkers.set(cat.catId, markerInstance)
+  setCatMarkerVisibility(isFollowing && !isTransitioning)
 }
 
-map.on('zoom', () => {
+function syncCatMarkers(cats) {
+  for (const cat of cats) {
+    if (catMarkers.has(cat.catId)) {
+      catMarkers.get(cat.catId).setLngLat([cat.lng, cat.lat])
+    } else {
+      addCatMarker(cat)
+    }
+  }
+  setCatMarkerVisibility(isFollowing && !isTransitioning)
+}
+
+function setCatMarkerVisibility(visible) {
+  const canPlaceMarker = map.getZoom() >= CAT_MARKER_MIN_VISIBLE_ZOOM
+  const shouldShow = visible && canPlaceMarker
+  catMarkers.forEach((marker) => {
+    const element = marker.getElement()
+    element.hidden = !shouldShow
+    element.style.display = shouldShow ? '' : 'none'
+  })
+}
+
+function updateCatMarkerPresentation() {
   const offset = catMarkerOffset()
   catMarkers.forEach((marker) => marker.setOffset(offset))
-})
+  setCatMarkerVisibility(isFollowing && !isTransitioning)
+}
+
+map.on('zoom', updateCatMarkerPresentation)
 
 async function fetchMapObjects() {
   const params = new URLSearchParams({
@@ -305,10 +410,12 @@ function applyOrbit() {
     bearing: orbitBearing,
     pitch: pitchForZoom(orbitZoom),
   })
+  updateCatMarkerPresentation()
 }
 
 map.on('moveend', () => {
   isTransitioning = false
+  setCatMarkerVisibility(isFollowing)
 })
 
 // ─────────────────────────────────────────────
@@ -323,6 +430,7 @@ function startPositionTracking() {
       userPosAccuracy = pos.coords.accuracy
       userPosUpdatedAt = Date.now()
       animatedModelLayer.setAvatarPosition(userPos)
+      updatePreviewActors(userPos)
       // 마커 시점일 때는 카메라도 내 위치를 따라감.
       // GPS 좌표가 튀어도 화면이 순간이동하지 않게 부드럽게 이동한다.
       if (isFollowing && !isTransitioning) {
@@ -350,6 +458,7 @@ function refreshPositionForPhoto() {
         userPosAccuracy = pos.coords.accuracy
         userPosUpdatedAt = Date.now()
         animatedModelLayer.setAvatarPosition(userPos)
+        updatePreviewActors(userPos)
         resolve(true)
       },
       (error) => {
@@ -362,6 +471,40 @@ function refreshPositionForPhoto() {
 }
 
 let positionTrackingStarted = false
+let previewActorsInitialized = false
+
+function initPreviewActors() {
+  if (previewActorsInitialized) return
+  previewActorsInitialized = true
+  updatePreviewActors(markerLngLat())
+}
+
+function previewActorsAround(position) {
+  const [lng, lat] = position
+  const metersPerLngDegree = Math.cos((lat * Math.PI) / 180) * 111320
+  return PREVIEW_CAT_ACTORS.map((actor) => ({
+    ...actor,
+    lng: lng + Number(actor.offsetEastMeters ?? 0) / metersPerLngDegree,
+    lat: lat + Number(actor.offsetNorthMeters ?? 0) / 110540,
+  }))
+}
+
+function updatePreviewActors(position) {
+  if (!previewActorsInitialized) return
+  const actors = previewActorsAround(position)
+  syncCatMarkers(actors)
+  animatedModelLayer.setCatActors(actors)
+}
+
+window.addEventListener('catchme:preview-map', () => {
+  animatedModelLayer.setAvatarPosition([DEFAULT_QUERY_POSITION.lng, DEFAULT_QUERY_POSITION.lat])
+  initPreviewActors()
+  if (!positionTrackingStarted) {
+    positionTrackingStarted = true
+    startPositionTracking()
+  }
+  map.resize()
+})
 
 function enterApp() {
   const welcome = document.querySelector('#welcome')
@@ -372,7 +515,6 @@ function enterApp() {
     positionTrackingStarted = true
     startPositionTracking()
   }
-  if (!isFollowing) toggleView() // 더블탭 없이도 처음부터 아바타 마커 시점으로 시작
 
   window.setTimeout(() => {
     welcome.remove()
@@ -424,6 +566,7 @@ function toggleView() {
   isFollowing = !isFollowing
   isTransitioning = true
   animatedModelLayer.setFollowing(isFollowing)
+  setCatMarkerVisibility(false)
 
   if (isFollowing) {
     // 마커(내 위치) 시점으로: 궤도 카메라 초기화 + 기본 제스처 끄기.
