@@ -181,6 +181,11 @@ ALTER TABLE user_cat_collections ADD COLUMN IF NOT EXISTS custom_name VARCHAR(50
 -- Which reusable 3D model represents this cat on the map (see lib/catModels).
 ALTER TABLE cats ADD COLUMN IF NOT EXISTS model_key VARCHAR(40) NULL;
 
+-- Fixed per-building facing so cat towers don't all point the same way.
+-- Volatile DEFAULT is intentional: it randomizes existing rows once on add,
+-- and gives each newly seeded zone its own value without app-side generation.
+ALTER TABLE campus_zones ADD COLUMN IF NOT EXISTS rotation_y DECIMAL(6, 4) NOT NULL DEFAULT (random() * 2 * pi());
+
 -- Runtime 3D actor state for cats. Frontend consumes these values to anchor
 -- cats on buildings/ground and choose animation clips.
 ALTER TABLE cat_placements ADD COLUMN IF NOT EXISTS surface VARCHAR(30) NOT NULL DEFAULT 'ground';
@@ -199,6 +204,31 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname_onboarded BOOLEAN NOT NULL D
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oauth_provider_user_id
   ON users(auth_provider, provider_user_id)
   WHERE provider_user_id IS NOT NULL;
+
+-- Leveling system (feature not wired up yet; columns/tables prepared in advance).
+-- exp/level on users are a denormalized cache updated whenever a row is
+-- inserted into user_exp_events; the event log stays the source of truth so
+-- award logic can be recomputed/audited later without a data migration.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS exp INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS level INT NOT NULL DEFAULT 1;
+
+CREATE TABLE IF NOT EXISTS user_exp_events (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id),
+  event_type VARCHAR(30) NOT NULL,
+  exp_amount INT NOT NULL,
+  cat_id BIGINT NULL REFERENCES cats(id),
+  photo_id BIGINT NULL REFERENCES cat_photos(id),
+  zone_id BIGINT NULL REFERENCES campus_zones(id),
+  metadata JSONB NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_user_exp_events_user_created_at ON user_exp_events(user_id, created_at);
+
+-- One-time-per-cat awards (e.g. first discovery) must not be granted twice.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_exp_events_unique_cat_event
+  ON user_exp_events(user_id, event_type, cat_id)
+  WHERE cat_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_cat_photos_user_taken_at ON cat_photos(user_id, taken_at);
 CREATE INDEX IF NOT EXISTS idx_cat_photos_cat_taken_at ON cat_photos(cat_id, taken_at);

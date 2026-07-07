@@ -9,8 +9,22 @@ export interface UserRow {
   nickname_onboarded: boolean
   profile_image_url: string | null
   role: 'user' | 'admin'
+  exp: number
+  level: number
   created_at: string
   updated_at: string
+}
+
+export interface UserExpEventRow {
+  id: number
+  user_id: number
+  event_type: string
+  exp_amount: number
+  cat_id: number | null
+  photo_id: number | null
+  zone_id: number | null
+  metadata: Record<string, unknown> | null
+  created_at: string
 }
 
 export interface EmailVerificationRow {
@@ -161,6 +175,7 @@ export interface CampusZoneRow {
   radius_meters: number
   model_type: string | null
   description: string | null
+  rotation_y: number
   created_at: string
   updated_at: string
 }

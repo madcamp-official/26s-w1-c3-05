@@ -158,7 +158,7 @@ export const mapObject = (zone: CampusZoneRow, distanceMeters: number) => {
     modelKey,
     modelUrl: asset.assetUrl,
     modelScale: asset.scale,
-    rotationY: asset.rotationY,
+    rotationY: Number(zone.rotation_y),
     radiusMeters: zone.radius_meters,
     description: zone.description,
   }

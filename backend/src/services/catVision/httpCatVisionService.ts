@@ -80,6 +80,12 @@ export class HttpCatVisionService implements CatVisionService {
       return this.identify(input, analysis.confidence, artifacts)
     } catch (error) {
       if (!this.fallbackToMock) throw error
+      // The mock scorer does not look at image content at all (see
+      // MockCatVisionService), so a silent fallback here can masquerade as a
+      // real (but broken) identifier — always matching whichever cat was most
+      // recently seen. Log loudly so a dead vision service is never mistaken
+      // for a vision service that just always agrees.
+      console.warn('Vision service /analyze failed, falling back to mock identification:', error)
       return this.mockService.analyze(input)
     }
   }
