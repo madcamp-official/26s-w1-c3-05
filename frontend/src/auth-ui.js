@@ -1,20 +1,26 @@
 import {
   hasSession,
+  getStoredUser,
   loginAsGuest,
   loginWithEmail,
   loginWithGoogle,
   loginWithKakao,
   sendSignupCode,
   signupWithEmail,
+  updateStoredUser,
 } from './auth.js'
+import { updateProfile } from './api.js'
 
 const welcome = document.querySelector('#welcome')
 const emailAuth = document.querySelector('#email-auth')
 const signup = document.querySelector('#signup')
+const nicknameSetup = document.querySelector('#nickname-setup')
 const emailForm = document.querySelector('#email-step-form')
 const signupForm = document.querySelector('#signup-form')
+const nicknameSetupForm = document.querySelector('#nickname-setup-form')
 const emailInput = document.querySelector('#email-input')
 const signupEmailInput = document.querySelector('#login-id')
+const nicknameSetupInput = document.querySelector('#nickname-setup-input')
 
 function showMessage(element, message = '') {
   if (!element) return
@@ -35,18 +41,21 @@ function enterService() {
   window.dispatchEvent(new CustomEvent('catchme:enter-service'))
   emailAuth.hidden = true
   signup.hidden = true
+  if (nicknameSetup) nicknameSetup.hidden = true
   welcome.hidden = true
 }
 
 function showWelcome() {
   emailAuth.hidden = true
   signup.hidden = true
+  if (nicknameSetup) nicknameSetup.hidden = true
   welcome.hidden = false
 }
 
 function openEmailLogin() {
   welcome.hidden = true
   signup.hidden = true
+  if (nicknameSetup) nicknameSetup.hidden = true
   emailAuth.hidden = false
   showMessage(document.querySelector('#email-auth-message'))
   emailInput.focus()
@@ -55,19 +64,41 @@ function openEmailLogin() {
 function openSignup() {
   welcome.hidden = true
   emailAuth.hidden = true
+  if (nicknameSetup) nicknameSetup.hidden = true
   signup.hidden = false
   showMessage(document.querySelector('#signup-auth-message'))
   if (emailInput.value.trim()) signupEmailInput.value = emailInput.value.trim()
   signupEmailInput.focus()
 }
 
+window.openSignup = openSignup
+
+function shouldOpenNicknameSetup(data) {
+  return Boolean(data?.needsNickname && ['local', 'google', 'kakao'].includes(data.user?.authProvider))
+}
+
+function openNicknameSetup(user) {
+  welcome.hidden = true
+  emailAuth.hidden = true
+  signup.hidden = true
+  if (!nicknameSetup || !nicknameSetupInput) return enterService()
+  nicknameSetup.hidden = false
+  showMessage(document.querySelector('#nickname-setup-message'))
+  nicknameSetupInput.value = ''
+  nicknameSetupInput.placeholder = user?.nickname ? `${user.nickname} 말고 새 닉네임` : '예: 고양이탐험가'
+  nicknameSetupInput.focus()
+}
+
+window.openNicknameSetup = openNicknameSetup
+
 async function runAuth(button, messageElement, busyText, action) {
   showMessage(messageElement)
   setBusy(button, true, busyText)
 
   try {
-    await action()
-    enterService()
+    const data = await action()
+    if (shouldOpenNicknameSetup(data)) openNicknameSetup(data.user)
+    else enterService()
   } catch (error) {
     showMessage(messageElement, error?.message ?? '로그인에 실패했습니다.')
   } finally {
@@ -176,9 +207,10 @@ async function finishKakaoLogin() {
       throw new Error(tokenData.error_description ?? '카카오 토큰을 받지 못했습니다.')
     }
 
-    await loginWithKakao(tokenData.access_token)
+    const data = await loginWithKakao(tokenData.access_token)
     window.history.replaceState(null, '', '/')
-    enterService()
+    if (shouldOpenNicknameSetup(data)) openNicknameSetup(data.user)
+    else enterService()
   } catch (error) {
     window.history.replaceState(null, '', '/')
     showMessage(message, error?.message ?? '카카오 로그인에 실패했습니다.')
@@ -232,9 +264,29 @@ signupForm.addEventListener('submit', (event) => {
       email: signupEmailInput.value.trim(),
       code: document.querySelector('#signup-code').value.trim(),
       password: document.querySelector('#signup-password').value,
-      nickname: document.querySelector('#display-name').value.trim(),
     })
   )
+})
+
+nicknameSetupForm?.addEventListener('submit', async (event) => {
+  event.preventDefault()
+  if (!nicknameSetupForm.reportValidity()) return
+
+  const button = nicknameSetupForm.querySelector('[type="submit"]')
+  const messageElement = document.querySelector('#nickname-setup-message')
+  const nickname = nicknameSetupInput.value.trim()
+  showMessage(messageElement)
+  setBusy(button, true, '저장 중…')
+
+  try {
+    const user = await updateProfile({ nickname })
+    updateStoredUser({ ...getStoredUser(), ...user })
+    enterService()
+  } catch (error) {
+    showMessage(messageElement, error?.message ?? '닉네임을 저장하지 못했습니다.')
+  } finally {
+    setBusy(button, false, '저장 중…')
+  }
 })
 
 document.querySelector('[data-guest-entry]').addEventListener('click', (event) => {
@@ -245,7 +297,7 @@ document.querySelector('[data-social-login="google"]').addEventListener('click',
   const button = event.currentTarget
   runAuth(button, document.querySelector('#welcome-auth-message'), 'Google 연결 중…', async () => {
     const idToken = await getGoogleIdToken()
-    await loginWithGoogle(idToken)
+    return loginWithGoogle(idToken)
   })
 })
 
@@ -262,6 +314,14 @@ document.querySelector('[data-social-login="kakao"]').addEventListener('click', 
 
 window.addEventListener('DOMContentLoaded', async () => {
   if (await finishKakaoLogin()) return
+  if (window.location.hash === '#signup') {
+    openSignup()
+    return
+  }
+  // 디자인 QA용: URL 해시로 바로 진입해서 화면을 확인할 수 있게 한다.
+  if (window.location.hash === '#email-auth') {
+    openEmailLogin()
+    return
+  }
   if (hasSession()) enterService()
-  if (window.location.hash === '#signup') openSignup()
 })

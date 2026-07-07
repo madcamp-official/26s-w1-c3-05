@@ -20,76 +20,6 @@ import {
 
 // 아직 GPS를 못 받았을 때 지도 조회에 쓰는 기본 위치 (KAIST 중앙도서관 부근).
 const DEFAULT_QUERY_POSITION = { lat: 36.3727, lng: 127.3602 }
-const PREVIEW_CAT_ACTORS = [
-  {
-    catId: 'preview-mango',
-    displayType: 'discovered_cat',
-    name: '망고',
-    offsetEastMeters: 10,
-    offsetNorthMeters: 18,
-    lat: DEFAULT_QUERY_POSITION.lat,
-    lng: DEFAULT_QUERY_POSITION.lng,
-    distanceMeters: 0,
-    zoneName: '중앙도서관',
-    modelType: 'cat',
-    modelUrl: '/models/cat.glb',
-    modelScale: 1,
-    animationKey: 'sit',
-    heightOffsetMeters: 0,
-    mainImageUrl: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&w=160&q=70',
-  },
-  {
-    catId: 'preview-berry-bush',
-    displayType: 'undiscovered_recent',
-    name: null,
-    offsetEastMeters: -14,
-    offsetNorthMeters: 14,
-    lat: DEFAULT_QUERY_POSITION.lat,
-    lng: DEFAULT_QUERY_POSITION.lng,
-    distanceMeters: 0,
-    zoneName: 'N1',
-    modelType: 'bush',
-    modelUrl: '/models/bush_01.glb',
-    modelScale: 1,
-    animationKey: 'idle',
-    heightOffsetMeters: 0,
-    mainImageUrl: null,
-  },
-  {
-    catId: 'preview-bami',
-    displayType: 'discovered_cat',
-    name: '밤이',
-    offsetEastMeters: 18,
-    offsetNorthMeters: -12,
-    lat: DEFAULT_QUERY_POSITION.lat,
-    lng: DEFAULT_QUERY_POSITION.lng,
-    distanceMeters: 0,
-    zoneName: '생활관',
-    modelType: 'cat',
-    modelUrl: '/models/cat.glb',
-    modelScale: 1,
-    animationKey: 'sleep',
-    heightOffsetMeters: 0,
-    mainImageUrl: 'https://images.unsplash.com/photo-1543852786-1cf6624b9987?auto=format&fit=crop&w=160&q=70',
-  },
-  {
-    catId: 'preview-hidden-bush',
-    displayType: 'undiscovered_recent',
-    name: null,
-    offsetEastMeters: -20,
-    offsetNorthMeters: -16,
-    lat: DEFAULT_QUERY_POSITION.lat,
-    lng: DEFAULT_QUERY_POSITION.lng,
-    distanceMeters: 0,
-    zoneName: '산책로',
-    modelType: 'bush',
-    modelUrl: '/models/bush_01.glb',
-    modelScale: 1,
-    animationKey: 'idle',
-    heightOffsetMeters: 0,
-    mainImageUrl: null,
-  },
-]
 
 // 백엔드 API 주소. 배포 시 VITE_API_BASE_URL 환경변수로 주입한다.
 // (미설정 시 로컬 개발용 백엔드로 fallback)
@@ -276,13 +206,16 @@ function addCatMarker(cat) {
   const isDiscovered = cat.displayType === 'discovered_cat'
   const marker = document.createElement('button')
   marker.type = 'button'
+  marker.dataset.displayType = cat.displayType ?? ''
+  marker.dataset.name = cat.name ?? ''
+  marker.dataset.mainImageUrl = cat.mainImageUrl ?? ''
 
   if (isDiscovered) {
     marker.className = 'mock-cat-info-marker mock-cat-map-marker'
     marker.setAttribute('aria-label', `${cat.name} latest sighting`)
 
     const image = document.createElement('img')
-    image.src = cat.mainImageUrl
+    image.src = resolveAssetUrl(cat.mainImageUrl) ?? ''
     image.alt = ''
     const content = document.createElement('span')
     content.className = 'mock-cat-info-content'
@@ -315,13 +248,38 @@ function addCatMarker(cat) {
 }
 
 function syncCatMarkers(cats) {
+  const activeIds = new Set(cats.map((cat) => String(cat.catId)))
+
   for (const cat of cats) {
+    const existing = catMarkers.get(cat.catId)
+    if (existing) {
+      const element = existing.getElement()
+      const changed =
+        element.dataset.displayType !== (cat.displayType ?? '') ||
+        element.dataset.name !== (cat.name ?? '') ||
+        element.dataset.mainImageUrl !== (cat.mainImageUrl ?? '')
+
+      if (changed) {
+        existing.remove()
+        catMarkers.delete(cat.catId)
+        addCatMarker(cat)
+        continue
+      }
+    }
+
     if (catMarkers.has(cat.catId)) {
       catMarkers.get(cat.catId).setLngLat([cat.lng, cat.lat])
     } else {
       addCatMarker(cat)
     }
   }
+
+  for (const [catId, marker] of catMarkers) {
+    if (activeIds.has(String(catId))) continue
+    marker.remove()
+    catMarkers.delete(catId)
+  }
+
   setCatMarkerVisibility(isFollowing && !isTransitioning)
 }
 
@@ -370,16 +328,25 @@ async function fetchMapObjects() {
   return response.json()
 }
 
-async function fetchCatActors() {
+async function fetchCatActors(origin = [DEFAULT_QUERY_POSITION.lng, DEFAULT_QUERY_POSITION.lat]) {
   const params = new URLSearchParams({
-    lat: String(DEFAULT_QUERY_POSITION.lat),
-    lng: String(DEFAULT_QUERY_POSITION.lng),
+    lat: String(origin[1]),
+    lng: String(origin[0]),
     radius: '2000',
+    limit: '100',
     includeUndiscovered: 'true',
   })
   const response = await authFetch(`/api/map/cat-actors?${params}`)
   if (!response.ok) throw new Error('고양이 정보를 불러오지 못했습니다.')
   return response.json()
+}
+
+async function refreshCatActors(origin = markerLngLat()) {
+  if (!hasSession()) return []
+  const { cats = [] } = await fetchCatActors(origin)
+  syncCatMarkers(cats)
+  animatedModelLayer.setCatActors(cats)
+  return cats
 }
 
 let mapActorsInitialized = false
@@ -394,7 +361,7 @@ async function initMapActors() {
   ])
 
   objects.forEach(addMockBuildingMarker)
-  cats.forEach(addCatMarker)
+  syncCatMarkers(cats)
   animatedModelLayer.setCatActors(cats)
   animatedModelLayer.setAvatarPosition([DEFAULT_QUERY_POSITION.lng, DEFAULT_QUERY_POSITION.lat])
 }
@@ -459,7 +426,6 @@ function startPositionTracking() {
       userPosAccuracy = pos.coords.accuracy
       userPosUpdatedAt = Date.now()
       animatedModelLayer.setAvatarPosition(userPos)
-      updatePreviewActors(userPos)
       // 마커 시점일 때는 카메라도 내 위치를 따라감.
       // GPS 좌표가 튀어도 화면이 순간이동하지 않게 부드럽게 이동한다.
       if (isFollowing && !isTransitioning) {
@@ -487,7 +453,6 @@ function refreshPositionForPhoto() {
         userPosAccuracy = pos.coords.accuracy
         userPosUpdatedAt = Date.now()
         animatedModelLayer.setAvatarPosition(userPos)
-        updatePreviewActors(userPos)
         resolve(true)
       },
       (error) => {
@@ -500,40 +465,6 @@ function refreshPositionForPhoto() {
 }
 
 let positionTrackingStarted = false
-let previewActorsInitialized = false
-
-function initPreviewActors() {
-  if (previewActorsInitialized) return
-  previewActorsInitialized = true
-  updatePreviewActors(markerLngLat())
-}
-
-function previewActorsAround(position) {
-  const [lng, lat] = position
-  const metersPerLngDegree = Math.cos((lat * Math.PI) / 180) * 111320
-  return PREVIEW_CAT_ACTORS.map((actor) => ({
-    ...actor,
-    lng: lng + Number(actor.offsetEastMeters ?? 0) / metersPerLngDegree,
-    lat: lat + Number(actor.offsetNorthMeters ?? 0) / 110540,
-  }))
-}
-
-function updatePreviewActors(position) {
-  if (!previewActorsInitialized) return
-  const actors = previewActorsAround(position)
-  syncCatMarkers(actors)
-  animatedModelLayer.setCatActors(actors)
-}
-
-window.addEventListener('catchme:preview-map', () => {
-  animatedModelLayer.setAvatarPosition([DEFAULT_QUERY_POSITION.lng, DEFAULT_QUERY_POSITION.lat])
-  initPreviewActors()
-  if (!positionTrackingStarted) {
-    positionTrackingStarted = true
-    startPositionTracking()
-  }
-  map.resize()
-})
 
 function enterApp() {
   const welcome = document.querySelector('#welcome')
@@ -1383,6 +1314,7 @@ async function processCapturedFile(file) {
 
     if (['matched', 'new_cat_candidate'].includes(result?.detectionStatus)) {
       await keepSuccessfulPhoto(photo)
+      refreshCatActors(position).catch((error) => console.warn('지도 고양이를 갱신하지 못했습니다.', error))
       pendingCapturedPhoto = null
     }
   } catch (error) {
@@ -1411,9 +1343,11 @@ captureCandidateForm?.addEventListener('submit', async (event) => {
 
   try {
     const result = await confirmSightingCandidate(selected)
+    const refreshPosition = pendingConfirmation?.photo?.position ?? markerLngLat()
     renderCaptureResponse(result, pendingConfirmation?.imageUrl)
     if (['matched', 'new_cat_candidate'].includes(result?.detectionStatus)) {
       await keepSuccessfulPhoto(pendingConfirmation?.photo)
+      refreshCatActors(refreshPosition).catch((error) => console.warn('지도 고양이를 갱신하지 못했습니다.', error))
       pendingConfirmation = null
       pendingCapturedPhoto = null
     }
@@ -1497,6 +1431,8 @@ const settingsScreen = document.querySelector('#settings-screen')
 const settingsNameForm = document.querySelector('#settings-name-form')
 const settingsNameInput = document.querySelector('#settings-name-input')
 const settingsImageInput = document.querySelector('#settings-image-input')
+const settingsPhotoPicker = document.querySelector('#settings-photo-picker')
+const settingsPhotoEmpty = document.querySelector('#settings-photo-empty')
 const settingsMessage = document.querySelector('#settings-message')
 
 function showSettingsMessage(message = '', isError = false) {
@@ -1537,12 +1473,89 @@ function updateDisplayedName(name) {
   }
 }
 
+function renderAvatar(target, imageUrl, fallback = '👩‍🌾') {
+  if (!target) return
+  const resolved = resolveAssetUrl(imageUrl)
+  if (resolved) {
+    const img = document.createElement('img')
+    img.src = resolved
+    img.alt = ''
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit'
+    target.replaceChildren(img)
+  } else {
+    target.textContent = fallback
+  }
+}
+
+function updateDisplayedAvatar(imageUrl) {
+  renderAvatar(document.querySelector('.settings-avatar'), imageUrl)
+  renderAvatar(document.querySelector('.cat-menu-avatar'), imageUrl)
+  renderAvatar(dexAvatar, imageUrl)
+}
+
+function selectSettingsProfilePhoto(imageUrl) {
+  if (settingsImageInput) settingsImageInput.value = imageUrl || ''
+  settingsPhotoPicker?.querySelectorAll('.settings-photo-option').forEach((button) => {
+    button.classList.toggle('is-selected', button.dataset.imageUrl === imageUrl)
+    button.setAttribute('aria-pressed', button.dataset.imageUrl === imageUrl ? 'true' : 'false')
+  })
+  renderAvatar(document.querySelector('.settings-avatar'), imageUrl)
+}
+
+function buildSettingsPhotoOption(photo) {
+  const imageUrl = photo.imageUrl
+  const previewUrl = resolveAssetUrl(imageUrl)
+  const button = document.createElement('button')
+  button.className = 'settings-photo-option'
+  button.type = 'button'
+  button.dataset.imageUrl = imageUrl
+  button.setAttribute('aria-pressed', 'false')
+  button.setAttribute('aria-label', photo.catName ? `${photo.catName} 사진 선택` : '갤러리 사진 선택')
+
+  const img = document.createElement('img')
+  img.src = previewUrl
+  img.alt = ''
+  img.loading = 'lazy'
+  button.append(img)
+  button.addEventListener('click', () => selectSettingsProfilePhoto(imageUrl))
+  return button
+}
+
+async function loadSettingsProfilePhotos() {
+  if (!settingsPhotoPicker) return
+  settingsPhotoPicker.replaceChildren()
+  if (settingsPhotoEmpty) {
+    settingsPhotoEmpty.hidden = false
+    settingsPhotoEmpty.textContent = '갤러리 사진을 불러오는 중이에요.'
+  }
+
+  try {
+    const data = await getGallery({ limit: 24 })
+    const photos = (data.photos ?? []).filter((photo) => photo.imageUrl)
+    settingsPhotoPicker.replaceChildren(...photos.map(buildSettingsPhotoOption))
+    if (settingsPhotoEmpty) {
+      settingsPhotoEmpty.hidden = photos.length > 0
+      settingsPhotoEmpty.textContent = '아직 프로필로 쓸 갤러리 사진이 없어요.'
+    }
+    selectSettingsProfilePhoto(settingsImageInput?.value || '')
+  } catch (error) {
+    console.warn('프로필 사진 후보를 불러오지 못했습니다.', error)
+    if (settingsPhotoEmpty) {
+      settingsPhotoEmpty.hidden = false
+      settingsPhotoEmpty.textContent = '갤러리 사진을 불러오지 못했어요.'
+    }
+  }
+}
+
 function openSettingsScreen() {
   if (!settingsScreen || !settingsNameInput) return
   settingsNameInput.value = currentDisplayName()
-  if (settingsImageInput) settingsImageInput.value = getStoredUser()?.profileImageUrl || ''
+  const profileImageUrl = getStoredUser()?.profileImageUrl || ''
+  if (settingsImageInput) settingsImageInput.value = profileImageUrl
+  renderAvatar(document.querySelector('.settings-avatar'), profileImageUrl)
   showSettingsMessage()
   settingsScreen.hidden = false
+  loadSettingsProfilePhotos()
   settingsNameInput.focus()
 }
 
@@ -1560,6 +1573,28 @@ document.querySelectorAll('[data-open-settings]').forEach((button) => {
 })
 document.querySelectorAll('[data-settings-close]').forEach((button) => {
   button.addEventListener('click', closeSettingsScreen)
+})
+document.querySelector('[data-settings-photo-clear]')?.addEventListener('click', () => {
+  selectSettingsProfilePhoto('')
+})
+
+document.querySelector('.cat-menu-logout')?.addEventListener('click', async (event) => {
+  const button = event.currentTarget
+  const originalHtml = button.innerHTML
+  button.disabled = true
+  button.textContent = '로그아웃 중...'
+
+  try {
+    await logout()
+    window.location.replace(window.location.pathname)
+  } catch (error) {
+    console.warn('로그아웃 요청에 실패했습니다.', error)
+    await logout()
+    window.location.replace(window.location.pathname)
+  } finally {
+    button.disabled = false
+    button.innerHTML = originalHtml
+  }
 })
 
 // 도감(profile-dex)에 서버 컬렉션(GET /api/collection) 실데이터를 채운다.
@@ -1804,14 +1839,7 @@ async function loadProfileStats() {
     const me = await getProfile()
     if (dexStats[0] && me.discoveredCount != null) dexStats[0].textContent = String(me.discoveredCount)
     if (dexStats[1] && me.sightingCount != null) dexStats[1].textContent = String(me.sightingCount)
-    const avatarUrl = resolveAssetUrl(me.profileImageUrl)
-    if (avatarUrl && dexAvatar) {
-      const img = document.createElement('img')
-      img.src = avatarUrl
-      img.alt = ''
-      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit'
-      dexAvatar.replaceChildren(img)
-    }
+    updateDisplayedAvatar(me.profileImageUrl)
   } catch (error) {
     console.warn('프로필을 불러오지 못했습니다.', error)
   }
@@ -1857,6 +1885,7 @@ newCatNameForm?.addEventListener('submit', async (event) => {
   try {
     await setCatName(pendingNewCatId, name)
     showNewCatNameMessage(`'${name}' 이름을 지어줬어요! 🐾`)
+    refreshCatActors().catch((error) => console.warn('지도 고양이를 갱신하지 못했습니다.', error))
     pendingNewCatId = null
     setTimeout(() => {
       const result = document.querySelector('#capture-result')
@@ -2002,6 +2031,34 @@ document.querySelectorAll('[data-activity-close]').forEach((button) => {
   })
 })
 
+// ── 도움말(정적 사용법 안내) ──
+const helpScreen = document.querySelector('#help-screen')
+document.querySelectorAll('[data-open-help]').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (helpScreen) helpScreen.hidden = false
+  })
+})
+document.querySelectorAll('[data-help-close]').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (helpScreen) helpScreen.hidden = true
+  })
+})
+
+// 디자인 QA용: URL 해시로 바로 진입해서 화면을 확인할 수 있게 한다.
+// (#profile, #detail, #settings, #menu, #camera, #capture-preview는 기존에 이미 지원됨)
+if (['#favorites', '#activity', '#gallery', '#help'].includes(window.location.hash)) {
+  document.querySelector('#welcome').hidden = true
+  document.querySelector('#signup').hidden = true
+}
+if (window.location.hash === '#favorites') openFavorites()
+if (window.location.hash === '#activity') openActivity()
+if (window.location.hash === '#help' && helpScreen) helpScreen.hidden = false
+if (window.location.hash === '#gallery') {
+  renderGallery()
+  catGallery.hidden = false
+  loadServerGallery()
+}
+
 settingsNameForm?.addEventListener('submit', async (event) => {
   event.preventDefault()
   if (!settingsNameForm.reportValidity()) return
@@ -2021,6 +2078,7 @@ settingsNameForm?.addEventListener('submit', async (event) => {
 
     updateStoredUser({ ...getStoredUser(), ...data })
     updateDisplayedName(data.nickname ?? nickname)
+    updateDisplayedAvatar(data.profileImageUrl ?? null)
     showSettingsMessage('저장됐어요.')
   } catch (error) {
     showSettingsMessage(error?.message ?? '저장하지 못했습니다.', true)

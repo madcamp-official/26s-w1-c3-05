@@ -21,6 +21,7 @@ export const publicUser = (user: UserRow) => ({
   id: String(user.id),
   username: user.username,
   nickname: user.nickname,
+  nicknameOnboarded: Boolean(user.nickname_onboarded),
   email: user.email,
   profileImageUrl: assetUrl(user.profile_image_url),
 })

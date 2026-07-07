@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   auth_provider VARCHAR(20) NOT NULL DEFAULT 'local',
   provider_user_id VARCHAR(255) NULL,
   nickname VARCHAR(50) NOT NULL,
+  nickname_onboarded BOOLEAN NOT NULL DEFAULT TRUE,
   profile_image_url TEXT NULL,
   role VARCHAR(20) NOT NULL DEFAULT 'user',
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -194,6 +195,7 @@ ALTER TABLE cat_placements ADD COLUMN IF NOT EXISTS animation_expires_at TIMESTA
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) NOT NULL DEFAULT 'local';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS provider_user_id VARCHAR(255) NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname_onboarded BOOLEAN NOT NULL DEFAULT TRUE;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oauth_provider_user_id
   ON users(auth_provider, provider_user_id)
   WHERE provider_user_id IS NOT NULL;

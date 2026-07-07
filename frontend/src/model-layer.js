@@ -183,6 +183,19 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
         const id = String(actor.catId)
         activeIds.add(id)
         let instance = this.instances.get(id)
+        const actorSignature = [
+          actor.modelType,
+          actor.modelUrl,
+          actor.modelKey,
+          actor.animationKey,
+        ].join('|')
+
+        if (instance && instance.actorSignature !== actorSignature) {
+          this.scene.remove(instance.root)
+          if (instance.mixer) this.mixers = this.mixers.filter((mixer) => mixer !== instance.mixer)
+          this.instances.delete(id)
+          instance = null
+        }
 
         if (!instance) {
           const isBush = actor.modelType === 'bush'
@@ -212,7 +225,7 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
             }
           }
 
-          instance = { root, mixer }
+          instance = { root, mixer, actorSignature }
           this.instances.set(id, instance)
         }
 
@@ -223,6 +236,7 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
       for (const [id, instance] of this.instances) {
         if (activeIds.has(id)) continue
         this.scene.remove(instance.root)
+        if (instance.mixer) this.mixers = this.mixers.filter((mixer) => mixer !== instance.mixer)
         this.instances.delete(id)
       }
     },

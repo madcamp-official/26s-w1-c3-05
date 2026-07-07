@@ -48,6 +48,7 @@ export const openApiDocument = {
           email: { type: 'string', nullable: true, example: 'catlover123@kaist.ac.kr' },
           authProvider: { type: 'string', example: 'local', enum: ['local', 'google', 'kakao', 'guest'] },
           nickname: { type: 'string', example: '고양이수집가' },
+          nicknameOnboarded: { type: 'boolean', example: true },
           profileImageUrl: { type: 'string', nullable: true, example: null },
         },
       },
@@ -56,6 +57,16 @@ export const openApiDocument = {
         properties: {
           user: { $ref: '#/components/schemas/User' },
           accessToken: { type: 'string', example: 'jwt.access.token' },
+          isNewUser: {
+            type: 'boolean',
+            example: true,
+            description: 'true when this auth call created a new local/social account.',
+          },
+          needsNickname: {
+            type: 'boolean',
+            example: true,
+            description: 'true when the frontend must show nickname-only onboarding before entering the map.',
+          },
         },
       },
       CatListItem: {
@@ -294,20 +305,24 @@ export const openApiDocument = {
       post: {
         tags: ['Auth'],
         summary: '회원가입',
-        description: '가입 전 `/auth/signup/send-code`로 받은 인증 코드가 필요합니다.',
+        description: '가입 전 `/auth/signup/send-code`로 받은 인증 코드가 필요합니다. 가입 직후 프론트엔드는 응답의 `needsNickname: true`를 보고 닉네임 입력 화면을 띄운 뒤 `PATCH /profile/me`로 닉네임을 저장합니다.',
         requestBody: {
           required: true,
           content: {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['email', 'code', 'username', 'password', 'nickname'],
+                required: ['email', 'code', 'username', 'password'],
                 properties: {
                   email: { type: 'string', format: 'email', example: 'catlover123@kaist.ac.kr' },
                   code: { type: 'string', example: '123456' },
                   username: { type: 'string', example: 'catlover123' },
                   password: { type: 'string', example: '12345678' },
-                  nickname: { type: 'string', example: '고양이수집가' },
+                  nickname: {
+                    type: 'string',
+                    example: '고양이수집가',
+                    description: 'Optional legacy field. New frontend omits this and collects nickname after auth. If omitted, backend returns needsNickname: true.',
+                  },
                 },
               },
             },
@@ -359,6 +374,7 @@ export const openApiDocument = {
       post: {
         tags: ['Auth'],
         summary: 'Google login',
+        description: '`isNewUser` is true only when the Google identity creates a new user. `needsNickname` is true until nickname onboarding is completed with `PATCH /profile/me`.',
         requestBody: {
           required: true,
           content: {
@@ -383,6 +399,7 @@ export const openApiDocument = {
       post: {
         tags: ['Auth'],
         summary: 'Kakao login',
+        description: '`isNewUser` is true only when the Kakao identity creates a new user. `needsNickname` is true until nickname onboarding is completed with `PATCH /profile/me`.',
         requestBody: {
           required: true,
           content: {
@@ -747,7 +764,22 @@ export const openApiDocument = {
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', properties: { nickname: { type: 'string', example: '새닉네임' }, profileImageUrl: { type: 'string', nullable: true } } } } },
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  nickname: { type: 'string', example: '새닉네임' },
+                  profileImageUrl: {
+                    type: 'string',
+                    nullable: true,
+                    example: '/uploads/1712345678-cat.jpg',
+                    description: 'Accepts either an http(s) URL or a backend-served /uploads path selected from the user gallery. Send null to clear.',
+                  },
+                },
+              },
+            },
+          },
         },
         responses: { '200': { description: 'OK' } },
       },
