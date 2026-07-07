@@ -1033,7 +1033,93 @@ body {
   }
 }
 
-/* 촬영 후 분류 결과: 실패 / 기존 고양이 / 새 고양이 */
+/* 촬영 후 분류 결과: 판별 로딩 / 실패 / 기존 고양이 / 새 고양이 */
+.capture-loading-card {
+  display: grid;
+  justify-items: center;
+  width: min(100%, 360px);
+  text-align: center;
+}
+
+.capture-result-panel--loading {
+  display: grid;
+  place-items: center;
+  padding: calc(28px + env(safe-area-inset-top)) 24px calc(28px + env(safe-area-inset-bottom));
+  color: #245f4b;
+  background:
+    radial-gradient(circle at 22% 20%, rgba(255, 255, 255, 0.95) 0 66px, transparent 67px),
+    radial-gradient(circle at 82% 76%, rgba(250, 226, 150, 0.45) 0 92px, transparent 93px),
+    linear-gradient(160deg, #f9fff4 0%, #eef8e8 56%, #faf8e5 100%);
+}
+
+.capture-loading-orbit {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  margin-bottom: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(39, 112, 79, 0.08),
+    0 18px 42px rgba(49, 117, 76, 0.16);
+  animation: capture-loading-pulse 1.7s ease-in-out infinite;
+}
+
+.capture-loading-orbit::before {
+  content: '🐾';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+}
+
+.capture-loading-orbit span {
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  border-radius: 50%;
+  background: #5fbf84;
+  box-shadow: 0 0 0 7px rgba(95, 191, 132, 0.16);
+  transform-origin: 9px 37px;
+  animation: capture-loading-spin 1.05s linear infinite;
+}
+
+.capture-loading-card h1 {
+  margin: 0 0 10px;
+  font-size: 25px;
+  line-height: 1.25;
+  font-weight: 900;
+  word-break: keep-all;
+}
+
+.capture-loading-card p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: rgba(36, 95, 75, 0.72);
+  word-break: keep-all;
+}
+
+@keyframes capture-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes capture-loading-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
 .capture-result {
   position: fixed;
   inset: 0;

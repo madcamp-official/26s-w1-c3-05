@@ -41,6 +41,7 @@
         <button type="button" data-qa-go="signup">회원가입</button>
         <button type="button" data-qa-go="nickname-setup">닉네임 입력</button>
         <button type="button" data-qa-go="camera">카메라 촬영</button>
+        <button type="button" data-qa-go="capture-loading">촬영결과 · 판별 로딩</button>
         <button type="button" data-qa-go="capture-failure">촬영결과 · 감지실패</button>
         <button type="button" data-qa-go="capture-existing">촬영결과 · 기존 고양이</button>
         <button type="button" data-qa-go="capture-new">촬영결과 · 새 고양이(이름짓기)</button>
@@ -144,7 +145,11 @@
             '#settings-screen', '#cat-gallery', '#favorites-screen', '#activity-screen',
             '#help-screen', '#camera-view', '#location-photos',
           ]
-          selectors.forEach((sel) => { const el = document.querySelector(sel); if (el) el.hidden = true })
+          selectors.forEach((sel) => {
+            const el = document.querySelector(sel)
+            if (!el) return
+            el.hidden = true
+          })
           const menu = document.querySelector('#cat-menu')
           if (menu) { menu.classList.remove('is-open'); menu.hidden = true }
           const welcome = document.querySelector('#welcome')
@@ -157,6 +162,7 @@
           signup: () => window.openSignup?.(),
           'nickname-setup': () => window.openNicknameSetup?.(),
           camera: () => window.showCameraView?.(),
+          'capture-loading': () => window.showCaptureResult?.('loading'),
           'capture-failure': () => window.showCaptureResult?.('failure'),
           'capture-existing': () => window.showCaptureResult?.('existing'),
           'capture-new': () => window.showCaptureResult?.('new'),
@@ -337,6 +343,16 @@
     </section>
 
     <section id="capture-result" class="capture-result" aria-live="polite" hidden>
+      <div class="capture-result-panel capture-result-panel--loading" data-capture-panel="loading" hidden>
+        <div class="capture-loading-card">
+          <div class="capture-loading-orbit" aria-hidden="true">
+            <span></span>
+          </div>
+          <h1>고양이 판별중입니다</h1>
+          <p>사진 속 고양이를 찾고 있어요.</p>
+        </div>
+      </div>
+
       <div class="capture-result-panel capture-result-panel--failure" data-capture-panel="failure" hidden>
         <button class="capture-result-close" type="button" data-capture-close aria-label="결과 화면 닫기">✕</button>
         <div class="capture-focus-corners" aria-hidden="true"></div>
@@ -488,6 +504,7 @@
       </div>
 
       <nav id="capture-preview-switcher" class="capture-preview-switcher" aria-label="촬영 결과 미리보기" hidden>
+        <button type="button" data-preview-result="loading">판별 로딩</button>
         <button type="button" data-preview-result="failure">감지 실패</button>
         <button type="button" data-preview-result="existing">기존 고양이</button>
         <button type="button" data-preview-result="new">새 고양이</button>
@@ -1009,8 +1026,8 @@
         })
 
         window.showCaptureResult = showCaptureResult
-
         const previewStates = {
+          '#capture-loading': 'loading',
           '#capture-failure': 'failure',
           '#capture-existing': 'existing',
           '#capture-new': 'new',
