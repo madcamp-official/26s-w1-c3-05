@@ -1103,6 +1103,8 @@
           menu.hidden = false
           // 다음 프레임에 클래스를 붙여 슬라이드 인 트랜지션이 재생되게 한다.
           requestAnimationFrame(() => menu.classList.add('is-open'))
+          // 열 때마다 발견한 고양이 수 등 프로필 통계를 최신화한다.
+          window.loadProfileStats?.()
         }
 
         function closeMenu() {
