@@ -72,7 +72,7 @@ const MOCK_MAP_MODE = false
 const CAT_MARKER_DEFAULT_OFFSET = [0, -18]
 const CAT_MARKER_FOLLOW_MIN_OFFSET = [0, -34]
 const CAT_MARKER_CLOSE_OFFSET = [0, -92]
-const CAT_MARKER_MIN_VISIBLE_ZOOM = 18.4
+const CAT_MARKER_MIN_VISIBLE_ZOOM = 15.0
 
 function catMarkerOffset() {
   if (!isFollowing) return CAT_MARKER_DEFAULT_OFFSET

@@ -420,9 +420,9 @@ export const createSighting = async (input: { catId: number; userId: number; pho
   const sighting = result.rows[0]
   await updateCatSeen(input.catId, input.seenAt)
 
-  // Shift placement coordinates by 2.0 - 4.0 meters in a random direction
+  // Shift placement coordinates by 4.0 - 7.0 meters in a random direction
   // so the cat/bush model doesn't overlap exactly with the user avatar.
-  const r = 2.0 + Math.random() * 2.0;
+  const r = 4.0 + Math.random() * 3.0;
   const theta = Math.random() * Math.PI * 2;
   const latOffset = (r * Math.cos(theta)) / 111000;
   const lngOffset = (r * Math.sin(theta)) / (111000 * Math.cos((input.latitude) * Math.PI / 180));
