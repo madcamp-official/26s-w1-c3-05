@@ -789,6 +789,37 @@ body {
   color: #a1b1a7;
 }
 
+.signup-email-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.signup-email-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.signup-send-code {
+  flex-shrink: 0;
+  height: 70px;
+  margin-bottom: 15px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 17px;
+  background: linear-gradient(180deg, #168252 0%, #087342 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(35, 98, 61, 0.08);
+  font: 700 13px/1.2 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.signup-send-code:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .signup-submit {
   width: 100%;
   height: 58px;
@@ -1743,6 +1774,21 @@ body {
 .mock-cat-info-content small {
   color: #62887f;
   font: 700 10px/1.2 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+}
+
+.mock-cat-unknown-marker {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.96);
+  border-radius: 50%;
+  background: rgba(76, 97, 88, 0.88);
+  color: #fff;
+  box-shadow: 0 5px 15px rgba(33, 91, 76, 0.2);
+  font: 800 12px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  pointer-events: auto;
 }
 
 #hint {

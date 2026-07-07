@@ -108,15 +108,31 @@
 
         <form id="signup-form" class="signup-form">
           <label for="login-id">이메일</label>
+          <div class="signup-email-row">
+            <input
+              id="login-id"
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="username"
+              minlength="3"
+              maxlength="50"
+              placeholder="example@email.com"
+              required
+            />
+            <button type="button" id="send-code-btn" class="signup-send-code">인증코드 받기</button>
+          </div>
+          <p id="send-code-message" class="auth-message" role="alert" hidden></p>
+
+          <label for="signup-code">인증코드</label>
           <input
-            id="login-id"
-            name="email"
-            type="email"
-            inputmode="email"
-            autocomplete="username"
-            minlength="3"
-            maxlength="50"
-            placeholder="example@email.com"
+            id="signup-code"
+            name="code"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]{6}"
+            maxlength="6"
+            placeholder="이메일로 받은 6자리 코드"
             required
           />
 

@@ -18,6 +18,9 @@ export const CAT_MODELS: Record<string, CatModel> = {
   default: { key: 'default', label: '기본 고양이', assetUrl: '/models/cats/default.glb', scale: 1 },
 }
 
+// 아직 발견하지 않은 고양이를 가리는 수풀 모델.
+export const BUSH_MODEL: CatModel = { key: 'bush', label: '수풀', assetUrl: '/models/bush_01.glb', scale: 1 }
+
 // Human/admin-provided pattern label -> model key.
 const PATTERN_TO_MODEL: Record<string, string> = {
   cheese: 'orange',

@@ -24,6 +24,7 @@ const MODEL_MIN_ZOOM_SCALE = 0.35
 const MODEL_MAX_ZOOM_SCALE = 7
 const AVATAR_MODEL_URL = '/models/miku_final_web_avatar_muted_unlit.glb'
 const CAT_MODEL_URL = '/models/cat.glb'
+const BUSH_MODEL_URL = '/models/bush_01.glb'
 const MAX_RENDER_PIXEL_RATIO = 3
 const TEXTURE_MAP_KEYS = [
   'map',
@@ -39,6 +40,13 @@ const AVATAR_SHADOW_OPACITY = 0.22
 const AVATAR_SHADOW_SCALE = [0.42, 0.42, 1]
 const AVATAR_SHADOW_POSITION = [0, 0, -0.04]
 const AVATAR_SHADOW_ROTATION_X = -Math.PI / 2
+// 고양이와 상호작용 가능한 범위를 나타내는 원 (윤곽선만, 채우기 없음).
+const AVATAR_RANGE_COLOR = 0xffffff
+const AVATAR_RANGE_OPACITY = 0.8
+const AVATAR_RANGE_RADIUS = 2.4
+const AVATAR_RANGE_SEGMENTS = 64
+const AVATAR_RANGE_POSITION = [0, 0, -0.03]
+const AVATAR_RANGE_ROTATION_X = -Math.PI / 2
 const CAT_PERSPECTIVE_REFERENCE_METERS = 90
 const CAT_PERSPECTIVE_OFFSET_METERS = 55
 const CAT_PERSPECTIVE_MIN_SCALE = 0.55
@@ -60,7 +68,7 @@ function distanceMeters(from, to) {
 
 const CAT_WORLD_HEIGHT_METERS = 5.5
 
-function createCatWorldLayer({ THREE, cloneModel, template, animations }) {
+function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemplate, bushAnimations }) {
   return {
     id: 'mock-cat-world-layer',
     type: 'custom',
@@ -145,18 +153,30 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations }) {
         let instance = this.instances.get(id)
 
         if (!instance) {
-          const model = cloneModel(template)
+          const isBush = actor.modelType === 'bush'
+          const model = cloneModel(isBush && bushTemplate ? bushTemplate : template)
           const root = new THREE.Group()
           root.matrixAutoUpdate = false
           root.add(model)
           this.scene.add(root)
 
           let mixer = null
-          const clip = this.findSittingClip(actor.animationKey)
-          if (clip) {
-            mixer = new THREE.AnimationMixer(model)
-            mixer.clipAction(clip).play()
-            this.mixers.push(mixer)
+          if (isBush) {
+            // 수풀은 특정 동작 하나만 고르지 않고 갖고 있는 애니메이션을 전부 동시 재생한다.
+            if (bushAnimations?.length) {
+              mixer = new THREE.AnimationMixer(model)
+              for (const clip of bushAnimations) {
+                mixer.clipAction(clip).play()
+              }
+              this.mixers.push(mixer)
+            }
+          } else {
+            const clip = this.findSittingClip(actor.animationKey)
+            if (clip) {
+              mixer = new THREE.AnimationMixer(model)
+              mixer.clipAction(clip).play()
+              this.mixers.push(mixer)
+            }
           }
 
           instance = { root, mixer }
@@ -311,6 +331,8 @@ export function createAnimatedModelLayer(map) {
         cloneModel: this.cloneModel,
         template: this.catTemplate,
         animations: this.catAnimations,
+        bushTemplate: this.bushTemplate,
+        bushAnimations: this.bushAnimations,
       })
 
       const addLayer = () => {
@@ -475,17 +497,21 @@ export function createAnimatedModelLayer(map) {
         sunlight.position.set(-2, 3, 5)
         this.scene.add(sunlight)
 
-        const [avatarGltf, catGltf] = await Promise.all([
+        const [avatarGltf, catGltf, bushGltf] = await Promise.all([
           this.loader.loadAsync(AVATAR_MODEL_URL),
           this.loader.loadAsync(CAT_MODEL_URL),
+          this.loader.loadAsync(BUSH_MODEL_URL),
         ])
         this.enhanceModelQuality(avatarGltf.scene)
         this.enhanceModelQuality(catGltf.scene)
+        this.enhanceModelQuality(bushGltf.scene)
 
         this.avatarTemplate = this.normalizeModel(avatarGltf.scene)
         this.avatarAnimations = avatarGltf.animations
         this.catTemplate = this.normalizeModel(catGltf.scene)
         this.catAnimations = catGltf.animations
+        this.bushTemplate = this.normalizeModel(bushGltf.scene)
+        this.bushAnimations = bushGltf.animations
         this.ready = true
         document.documentElement.classList.add('models-ready')
 
@@ -562,6 +588,9 @@ export function createAnimatedModelLayer(map) {
       if (options.withShadow) {
         anchor.add(this.createAvatarShadow())
       }
+      if (options.withRangeRing) {
+        anchor.add(this.createAvatarRangeRing())
+      }
       anchor.add(model)
       this.scene.add(anchor)
 
@@ -612,6 +641,31 @@ export function createAnimatedModelLayer(map) {
       return shadow
     },
 
+    createAvatarRangeRing() {
+      const { THREE } = this
+      const points = []
+      for (let i = 0; i < AVATAR_RANGE_SEGMENTS; i += 1) {
+        const angle = (i / AVATAR_RANGE_SEGMENTS) * Math.PI * 2
+        points.push(new THREE.Vector3(Math.cos(angle) * AVATAR_RANGE_RADIUS, Math.sin(angle) * AVATAR_RANGE_RADIUS, 0))
+      }
+      const ring = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints(points),
+        new THREE.LineBasicMaterial({
+          color: AVATAR_RANGE_COLOR,
+          transparent: true,
+          opacity: AVATAR_RANGE_OPACITY,
+          depthTest: false,
+          depthWrite: false,
+        })
+      )
+
+      ring.name = 'avatar_interaction_range'
+      ring.renderOrder = -1
+      ring.rotation.x = AVATAR_RANGE_ROTATION_X
+      ring.position.set(...AVATAR_RANGE_POSITION)
+      return ring
+    },
+
     createAvatarInstance() {
       if (this.avatarInstance || !this.avatarPosition) return
       this.avatarInstance = this.createInstance(
@@ -620,7 +674,7 @@ export function createAnimatedModelLayer(map) {
         this.findIdleClip(this.avatarAnimations)?.name ?? 'idle',
         this.avatarPosition,
         32,
-        { withShadow: true }
+        { withShadow: true, withRangeRing: true }
       )
     },
 

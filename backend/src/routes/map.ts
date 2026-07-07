@@ -31,7 +31,7 @@ mapRouter.get('/map/objects', requireAuth, async (req: AuthRequest, res, next) =
       lng: z.coerce.number().min(-180).max(180),
       minDistance: z.coerce.number().min(0).default(30),
       maxDistance: z.coerce.number().positive().default(250),
-      limit: z.coerce.number().int().positive().max(100).default(30),
+      limit: z.coerce.number().int().positive().max(10).default(10),
       modelType: z.string().max(50).default('building'),
     }).refine((value) => value.maxDistance >= value.minDistance, {
       message: 'maxDistance must be greater than or equal to minDistance',

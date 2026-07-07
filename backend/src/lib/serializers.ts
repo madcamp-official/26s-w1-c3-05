@@ -1,6 +1,6 @@
 import type { CampusZoneRow, CatIdentificationCandidateRow, CatPlacementRow, CatRow, CatSightingRow, GalleryPhotoRow, UserCatCollectionRow, UserRow } from '../db/types.js'
 import { buildingModelAsset, resolveBuildingModelKey } from './buildingModels.js'
-import { modelAsset, resolveModelKey } from './catModels.js'
+import { BUSH_MODEL, modelAsset, resolveModelKey } from './catModels.js'
 
 export const publicUser = (user: UserRow) => ({
   id: String(user.id),
@@ -88,8 +88,8 @@ export const mapCat = (placement: CatPlacementRow, isDiscovered: boolean) => {
     // Undiscovered cats are hidden as a bush; discovered cats show their coat model.
     modelType: isDiscovered ? 'cat' : 'bush',
     modelKey: isDiscovered ? modelKey : 'bush',
-    modelUrl: isDiscovered ? asset.assetUrl : null,
-    modelScale: isDiscovered ? asset.scale : null,
+    modelUrl: isDiscovered ? asset.assetUrl : BUSH_MODEL.assetUrl,
+    modelScale: isDiscovered ? asset.scale : BUSH_MODEL.scale,
     markerLabel: isDiscovered ? placement.name ?? '고양이' : '???',
     mainImageUrl: isDiscovered ? placement.representative_photo_url ?? null : null,
   }
@@ -114,8 +114,8 @@ export const catActor = (placement: CatPlacementRow, isDiscovered: boolean, dist
     movementRadiusMeters: placement.movement_radius_meters,
     modelType: isDiscovered ? 'cat' : 'bush',
     modelKey: isDiscovered ? modelKey : 'bush',
-    modelUrl: isDiscovered ? asset.assetUrl : null,
-    modelScale: isDiscovered ? asset.scale : null,
+    modelUrl: isDiscovered ? asset.assetUrl : BUSH_MODEL.assetUrl,
+    modelScale: isDiscovered ? asset.scale : BUSH_MODEL.scale,
     animationKey: isDiscovered ? placement.animation_key : 'idle',
     animationStartedAt: placement.animation_started_at,
     animationExpiresAt: placement.animation_expires_at,

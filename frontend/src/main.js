@@ -2,8 +2,10 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { addFlowerDecorations } from './FlowerDecorations.js'
 import { createAnimatedModelLayer } from './model-layer.js'
-import { MOCK_USER_AVATAR, fetchMockCatActors, fetchMockMapObjects } from './mock-map-api.js'
-import { API_BASE_URL } from './auth.js'
+import { API_BASE_URL, authFetch, hasSession } from './auth.js'
+
+// 아직 GPS를 못 받았을 때 지도 조회에 쓰는 기본 위치 (KAIST 중앙도서관 부근).
+const DEFAULT_QUERY_POSITION = { lat: 36.3727, lng: 127.3602 }
 
 // 백엔드 API 주소. 배포 시 VITE_API_BASE_URL 환경변수로 주입한다.
 // (미설정 시 로컬 개발용 백엔드로 fallback)
@@ -49,7 +51,17 @@ const map = new maplibregl.Map({
 
 const animatedModelLayer = createAnimatedModelLayer(map)
 const mockBuildingMarkers = new Map()
+const catMarkers = new Map()
 const MOCK_MAP_MODE = true
+
+// 가까이서 볼 때(follow 시점 줌 범위) 고양이 마커가 3D 모델과 겹치지 않게 위쪽으로 띄운다.
+const CAT_MARKER_CLOSE_ZOOM = FOLLOW_MIN_ZOOM
+const CAT_MARKER_DEFAULT_OFFSET = [0, 0]
+const CAT_MARKER_CLOSE_OFFSET = [0, -36]
+
+function catMarkerOffset() {
+  return map.getZoom() >= CAT_MARKER_CLOSE_ZOOM ? CAT_MARKER_CLOSE_OFFSET : CAT_MARKER_DEFAULT_OFFSET
+}
 
 // 기본 더블탭 확대 동작 끄기 (우리가 직접 더블탭을 시점 전환에 사용)
 map.doubleClickZoom.disable()
@@ -138,16 +150,6 @@ map.on('styledata', initScene)
 map.on('load', initScene)
 initScene()
 
-function latestSeenLabel(isoDate) {
-  return new Intl.DateTimeFormat('ko-KR', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(isoDate))
-}
-
 function addMockBuildingMarker(object) {
   if (mockBuildingMarkers.has(object.id)) return
 
@@ -176,52 +178,102 @@ function addMockBuildingMarker(object) {
   mockBuildingMarkers.set(object.id, marker)
 }
 
-function addMockCatInfoMarker(cat) {
+function addCatMarker(cat) {
+  const isDiscovered = cat.displayType === 'discovered_cat'
   const marker = document.createElement('button')
-  marker.className = 'mock-cat-info-marker'
   marker.type = 'button'
-  marker.setAttribute('aria-label', `${cat.name} latest sighting`)
 
-  const image = document.createElement('img')
-  image.src = cat.mainImageUrl
-  image.alt = ''
-  const content = document.createElement('span')
-  content.className = 'mock-cat-info-content'
-  const name = document.createElement('strong')
-  name.textContent = cat.name
-  const meta = document.createElement('small')
-  meta.textContent = `${cat.zoneName} · ${latestSeenLabel(cat.latestSeenAt)}`
-  content.append(name, meta)
-  marker.append(image, content)
+  if (isDiscovered) {
+    marker.className = 'mock-cat-info-marker'
+    marker.setAttribute('aria-label', `${cat.name} latest sighting`)
 
-  new maplibregl.Marker({
+    const image = document.createElement('img')
+    image.src = cat.mainImageUrl
+    image.alt = ''
+    const content = document.createElement('span')
+    content.className = 'mock-cat-info-content'
+    const name = document.createElement('strong')
+    name.textContent = cat.name
+    const meta = document.createElement('small')
+    meta.textContent = cat.zoneName ?? ''
+    content.append(name, meta)
+    marker.append(image, content)
+  } else {
+    // 아직 사진으로 발견하지 않은 고양이는 이름/사진 없이 "???"로만 표시한다.
+    marker.className = 'mock-cat-unknown-marker'
+    marker.setAttribute('aria-label', '아직 발견하지 않은 고양이')
+    marker.textContent = '???'
+  }
+
+  const markerInstance = new maplibregl.Marker({
     element: marker,
     anchor: 'top',
     pitchAlignment: 'viewport',
     rotationAlignment: 'viewport',
     subpixelPositioning: true,
+    offset: catMarkerOffset(),
   })
     .setLngLat([cat.lng, cat.lat])
     .addTo(map)
+
+  catMarkers.set(cat.catId, markerInstance)
 }
 
-async function initMockMapActors() {
+map.on('zoom', () => {
+  const offset = catMarkerOffset()
+  catMarkers.forEach((marker) => marker.setOffset(offset))
+})
+
+async function fetchMapObjects() {
+  const params = new URLSearchParams({
+    lat: String(DEFAULT_QUERY_POSITION.lat),
+    lng: String(DEFAULT_QUERY_POSITION.lng),
+    maxDistance: '2000',
+    limit: '10',
+  })
+  const response = await authFetch(`/api/map/objects?${params}`)
+  if (!response.ok) throw new Error('건물 정보를 불러오지 못했습니다.')
+  return response.json()
+}
+
+async function fetchCatActors() {
+  const params = new URLSearchParams({
+    lat: String(DEFAULT_QUERY_POSITION.lat),
+    lng: String(DEFAULT_QUERY_POSITION.lng),
+    radius: '2000',
+    includeUndiscovered: 'true',
+  })
+  const response = await authFetch(`/api/map/cat-actors?${params}`)
+  if (!response.ok) throw new Error('고양이 정보를 불러오지 못했습니다.')
+  return response.json()
+}
+
+let mapActorsInitialized = false
+
+async function initMapActors() {
+  if (mapActorsInitialized || !hasSession()) return
+  mapActorsInitialized = true
+
   const [{ objects }, { cats }] = await Promise.all([
-    fetchMockMapObjects(),
-    fetchMockCatActors(),
+    fetchMapObjects(),
+    fetchCatActors(),
   ])
 
   objects.forEach(addMockBuildingMarker)
-  cats.forEach(addMockCatInfoMarker)
+  cats.forEach(addCatMarker)
   animatedModelLayer.setCatActors(cats)
-  animatedModelLayer.setAvatarPosition([MOCK_USER_AVATAR.lng, MOCK_USER_AVATAR.lat])
+  animatedModelLayer.setAvatarPosition([DEFAULT_QUERY_POSITION.lng, DEFAULT_QUERY_POSITION.lat])
 }
 
-map.once('idle', () => {
-  initMockMapActors().catch((error) => {
-    console.warn('mock map actors failed to initialize:', error)
+function tryInitMapActors() {
+  initMapActors().catch((error) => {
+    mapActorsInitialized = false
+    console.warn('map actors failed to initialize:', error)
   })
-})
+}
+
+map.once('idle', tryInitMapActors)
+window.addEventListener('catchme:enter-service', tryInitMapActors)
 
 let userPos = null // 최근 GPS 위치 [lng, lat]
 let userPosAccuracy = Infinity // 최근 GPS 정확도(미터)
@@ -242,7 +294,7 @@ function pitchForZoom(z) {
 }
 
 function markerLngLat() {
-  return userPos ?? [MOCK_USER_AVATAR.lng, MOCK_USER_AVATAR.lat] ?? KAIST_CENTER
+  return userPos ?? [DEFAULT_QUERY_POSITION.lng, DEFAULT_QUERY_POSITION.lat] ?? KAIST_CENTER
 }
 
 // 현재 궤도 상태를 카메라에 즉시 반영 (마커를 항상 화면 중심에 두고 바라봄)
@@ -320,6 +372,7 @@ function enterApp() {
     positionTrackingStarted = true
     startPositionTracking()
   }
+  if (!isFollowing) toggleView() // 더블탭 없이도 처음부터 아바타 마커 시점으로 시작
 
   window.setTimeout(() => {
     welcome.remove()

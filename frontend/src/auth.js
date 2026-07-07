@@ -61,8 +61,15 @@ async function loginAndSave(path, body) {
 
 export const loginAsGuest = () => loginAndSave('/api/auth/guest')
 
-export const signupWithEmail = ({ email, password, nickname }) =>
-  loginAndSave('/api/auth/signup', { username: email, password, nickname })
+export const sendSignupCode = (email) =>
+  authRequest('/api/auth/signup/send-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+
+export const signupWithEmail = ({ email, code, password, nickname }) =>
+  loginAndSave('/api/auth/signup', { email, code, username: email, password, nickname })
 
 export const loginWithEmail = ({ email, password }) =>
   loginAndSave('/api/auth/login', { username: email, password })

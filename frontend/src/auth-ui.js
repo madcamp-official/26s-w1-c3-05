@@ -4,6 +4,7 @@ import {
   loginWithEmail,
   loginWithGoogle,
   loginWithKakao,
+  sendSignupCode,
   signupWithEmail,
 } from './auth.js'
 
@@ -107,6 +108,7 @@ async function getGoogleIdToken() {
   return new Promise((resolve, reject) => {
     window.google.accounts.id.initialize({
       client_id: clientId,
+      use_fedcm_for_prompt: true,
       callback: ({ credential }) => {
         if (credential) resolve(credential)
         else reject(new Error('Google 로그인 정보를 받지 못했습니다.'))
@@ -115,6 +117,8 @@ async function getGoogleIdToken() {
     window.google.accounts.id.prompt((notification) => {
       if (notification.isNotDisplayed()) {
         reject(new Error('Google 로그인 창을 열지 못했습니다. 브라우저 설정을 확인해주세요.'))
+      } else if (notification.isSkippedMoment()) {
+        reject(new Error('Google 로그인 창이 표시되지 않았습니다. 서드파티 쿠키 차단을 해제하거나 다시 시도해주세요.'))
       } else if (notification.isDismissedMoment()) {
         reject(new Error('Google 로그인이 취소되었습니다.'))
       }
@@ -200,6 +204,24 @@ emailForm.addEventListener('submit', (event) => {
   )
 })
 
+document.querySelector('#send-code-btn').addEventListener('click', async (event) => {
+  if (!signupEmailInput.reportValidity()) return
+
+  const button = event.currentTarget
+  const messageElement = document.querySelector('#send-code-message')
+  showMessage(messageElement)
+  setBusy(button, true, '전송 중…')
+
+  try {
+    await sendSignupCode(signupEmailInput.value.trim())
+    showMessage(messageElement, '인증코드를 전송했습니다. 이메일을 확인해주세요.')
+  } catch (error) {
+    showMessage(messageElement, error?.message ?? '인증코드 전송에 실패했습니다.')
+  } finally {
+    setBusy(button, false, '전송 중…')
+  }
+})
+
 signupForm.addEventListener('submit', (event) => {
   event.preventDefault()
   if (!signupForm.reportValidity()) return
@@ -208,6 +230,7 @@ signupForm.addEventListener('submit', (event) => {
   runAuth(button, document.querySelector('#signup-auth-message'), '가입 중…', () =>
     signupWithEmail({
       email: signupEmailInput.value.trim(),
+      code: document.querySelector('#signup-code').value.trim(),
       password: document.querySelector('#signup-password').value,
       nickname: document.querySelector('#display-name').value.trim(),
     })
