@@ -6,6 +6,7 @@ export interface UserRow {
   auth_provider: 'local' | 'google' | 'kakao' | 'guest'
   provider_user_id: string | null
   nickname: string
+  nickname_onboarded: boolean
   profile_image_url: string | null
   role: 'user' | 'admin'
   created_at: string

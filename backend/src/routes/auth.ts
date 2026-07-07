@@ -36,7 +36,7 @@ const signupSchema = z.object({
   code: z.string().length(6),
   username: z.string().min(3).max(50),
   password: z.string().min(6).max(100),
-  nickname: z.string().min(1).max(50),
+  nickname: z.string().min(1).max(50).optional(),
 })
 
 authRouter.post('/auth/signup/send-code', async (req, res, next) => {
@@ -120,6 +120,16 @@ const createUniqueOAuthUsername = async (provider: 'google' | 'kakao' | 'guest',
   throw new HttpError(500, 'OAuth username allocation failed.', 'OAUTH_USERNAME_ALLOCATION_FAILED')
 }
 
+const defaultNicknameFromEmail = (email: string) => email.split('@')[0].slice(0, 50) || '캣집사'
+const needsNickname = (user: { auth_provider: string; nickname_onboarded: boolean }) =>
+  user.auth_provider !== 'guest' && !user.nickname_onboarded
+const authResponse = (user: Awaited<ReturnType<typeof createUser>>, isNewUser: boolean) => ({
+  user: toPublicUser(user),
+  accessToken: signAccessToken(user),
+  isNewUser,
+  needsNickname: needsNickname(user),
+})
+
 authRouter.post('/auth/signup', async (req, res, next) => {
   try {
     const body = signupSchema.parse(req.body)
@@ -145,8 +155,14 @@ authRouter.post('/auth/signup', async (req, res, next) => {
     await consumeEmailVerification(verification.id)
 
     const passwordHash = await bcrypt.hash(body.password, 10)
-    const user = await createUser({ username: body.username, passwordHash, nickname: body.nickname, email: body.email })
-    res.status(201).json({ user: toPublicUser(user), accessToken: signAccessToken(user) })
+    const user = await createUser({
+      username: body.username,
+      passwordHash,
+      nickname: body.nickname ?? defaultNicknameFromEmail(body.email),
+      email: body.email,
+      nicknameOnboarded: Boolean(body.nickname),
+    })
+    res.status(201).json(authResponse(user, true))
   } catch (error) {
     next(error)
   }
@@ -161,7 +177,7 @@ authRouter.post('/auth/login', async (req, res, next) => {
     const isValid = await bcrypt.compare(body.password, user.password_hash)
     if (!isValid) throw new HttpError(401, '아이디 또는 비밀번호가 올바르지 않습니다.', 'INVALID_CREDENTIALS')
 
-    res.json({ user: toPublicUser(user), accessToken: signAccessToken(user) })
+    res.json(authResponse(user, false))
   } catch (error) {
     next(error)
   }
@@ -175,9 +191,10 @@ authRouter.post('/auth/guest', async (_req, res, next) => {
       authProvider: 'guest',
       providerUserId: guestId,
       nickname: `Guest ${guestId.slice(0, 6)}`,
+      nicknameOnboarded: true,
     })
 
-    res.status(201).json({ user: toPublicUser(user), accessToken: signAccessToken(user) })
+    res.status(201).json(authResponse(user, false))
   } catch (error) {
     next(error)
   }
@@ -198,6 +215,7 @@ authRouter.post('/auth/google', async (req, res, next) => {
     if (!payload.email_verified) throw new HttpError(401, 'Google email is not verified.', 'GOOGLE_EMAIL_NOT_VERIFIED')
 
     const existingUser = await findUserByOAuthIdentity('google', payload.sub)
+    const isNewUser = !existingUser
     const user =
       existingUser ??
       (await createOAuthUser({
@@ -206,10 +224,11 @@ authRouter.post('/auth/google', async (req, res, next) => {
         authProvider: 'google',
         providerUserId: payload.sub,
         nickname: (payload.name ?? payload.email?.split('@')[0] ?? 'Google user').slice(0, 50),
+        nicknameOnboarded: false,
         profileImageUrl: payload.picture ?? null,
       }))
 
-    res.json({ user: toPublicUser(user), accessToken: signAccessToken(user) })
+    res.json(authResponse(user, isNewUser))
   } catch (error) {
     next(error)
   }
@@ -221,6 +240,7 @@ authRouter.post('/auth/kakao', async (req, res, next) => {
     const kakaoUser = await getKakaoUser(body.accessToken)
     const kakaoUserId = String(kakaoUser.id)
     const existingUser = await findUserByOAuthIdentity('kakao', kakaoUserId)
+    const isNewUser = !existingUser
     const profile = kakaoUser.kakao_account?.profile
     const properties = kakaoUser.properties
     const nickname = profile?.nickname ?? properties?.nickname ?? `Kakao ${kakaoUserId.slice(-6)}`
@@ -233,10 +253,11 @@ authRouter.post('/auth/kakao', async (req, res, next) => {
         authProvider: 'kakao',
         providerUserId: kakaoUserId,
         nickname: nickname.slice(0, 50),
+        nicknameOnboarded: false,
         profileImageUrl,
       }))
 
-    res.json({ user: toPublicUser(user), accessToken: signAccessToken(user) })
+    res.json(authResponse(user, isNewUser))
   } catch (error) {
     next(error)
   }

@@ -6,6 +6,18 @@ import { publicUser } from '../lib/serializers.js'
 
 export const profileRouter = Router()
 
+const profileImageUrlSchema = z
+  .string()
+  .refine((value) => {
+    if (value.startsWith('/uploads/')) return true
+    try {
+      const url = new URL(value)
+      return ['http:', 'https:'].includes(url.protocol)
+    } catch {
+      return false
+    }
+  }, 'profileImageUrl must be an http(s) URL or an /uploads path')
+
 profileRouter.get('/profile/me', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const user = getCurrentUser(req)
@@ -20,7 +32,7 @@ profileRouter.get('/profile/me', requireAuth, async (req: AuthRequest, res, next
 profileRouter.patch('/profile/me', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const user = getCurrentUser(req)
-    const body = z.object({ nickname: z.string().min(1).max(50).optional(), profileImageUrl: z.string().url().nullable().optional() }).parse(req.body)
+    const body = z.object({ nickname: z.string().min(1).max(50).optional(), profileImageUrl: profileImageUrlSchema.nullable().optional() }).parse(req.body)
     const updated = (await updateUserProfile(user.id, body))!
     res.json(publicUser(updated))
   } catch (error) {

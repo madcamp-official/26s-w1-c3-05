@@ -860,6 +860,148 @@ body {
   transform: rotate(18deg);
 }
 
+.nickname-setup {
+  position: fixed;
+  inset: 0;
+  z-index: 125;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: calc(24px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom));
+  color: #174f36;
+  background:
+    radial-gradient(circle at 88% 16%, rgba(255, 255, 255, 0.86) 0 66px, transparent 67px),
+    radial-gradient(circle at 12% 86%, rgba(213, 241, 173, 0.72) 0 96px, transparent 97px),
+    linear-gradient(155deg, #f9fff5 0%, #eff9e9 58%, #f8f7df 100%);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  overscroll-behavior: contain;
+}
+
+.nickname-setup[hidden] {
+  display: none;
+}
+
+.nickname-setup-main {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 430px);
+}
+
+.nickname-setup-copy {
+  margin-bottom: 25px;
+  text-align: center;
+}
+
+.nickname-setup-paw {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 13px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 7px 18px rgba(36, 102, 61, 0.11);
+  display: grid;
+  place-items: center;
+  font-size: 27px;
+  transform: rotate(-5deg);
+}
+
+.nickname-setup-copy h1 {
+  margin: 0 0 7px;
+  color: #08703f;
+  font-size: clamp(28px, 8vw, 35px);
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.nickname-setup-copy p {
+  margin: 0;
+  color: #678872;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.nickname-setup-form {
+  display: grid;
+}
+
+.nickname-setup-form label {
+  margin: 0 0 7px 4px;
+  color: #255f43;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.nickname-setup-form input {
+  width: 100%;
+  height: 70px;
+  box-sizing: border-box;
+  margin-bottom: 15px;
+  padding: 0 17px;
+  border: 1.5px solid rgba(40, 117, 72, 0.15);
+  border-radius: 17px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.94);
+  color: #174c34;
+  box-shadow: 0 4px 14px rgba(35, 98, 61, 0.08);
+  font: 600 15px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.nickname-setup-form input:focus {
+  border-color: #22935b;
+  box-shadow: 0 0 0 4px rgba(34, 147, 91, 0.1), 0 4px 14px rgba(35, 98, 61, 0.08);
+}
+
+.nickname-setup-form input::placeholder {
+  color: #a1b1a7;
+}
+
+.nickname-setup-submit {
+  width: 100%;
+  height: 58px;
+  margin-top: 5px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #168252 0%, #087342 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(12, 104, 58, 0.22);
+  font: 750 16px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  cursor: pointer;
+}
+
+.nickname-setup-submit:active {
+  transform: scale(0.98);
+}
+
+.nickname-setup-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.nickname-setup-decoration {
+  position: fixed;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.nickname-setup-decoration--top {
+  top: 13%;
+  left: -16px;
+  color: rgba(78, 151, 96, 0.15);
+  font-size: 62px;
+  transform: rotate(-17deg);
+}
+
+.nickname-setup-decoration--bottom {
+  right: -13px;
+  bottom: 9%;
+  color: rgba(246, 170, 86, 0.35);
+  font-size: 64px;
+  transform: rotate(18deg);
+}
+
 @media (max-height: 760px) {
   .signup-screen {
     padding-top: calc(10px + env(safe-area-inset-top));
@@ -2942,6 +3084,11 @@ body {
   transform: scale(0.97);
 }
 
+.cat-menu-logout:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
 .cat-menu-logout svg {
   width: 18px;
   height: 18px;
@@ -3086,6 +3233,75 @@ body {
 .settings-card input:focus {
   border-color: rgba(43, 158, 127, 0.58);
   box-shadow: 0 0 0 4px rgba(43, 158, 127, 0.12);
+}
+
+.settings-photo-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -4px;
+}
+
+.settings-photo-clear {
+  border: 0;
+  background: transparent;
+  color: #2f7357;
+  font: 800 13px/1 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  cursor: pointer;
+}
+
+.settings-photo-picker {
+  min-height: 84px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+}
+
+.settings-photo-option {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 16px;
+  background: #edf7e4;
+  padding: 0;
+  box-shadow: 0 4px 12px rgba(42, 94, 59, 0.08);
+  cursor: pointer;
+}
+
+.settings-photo-option img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.settings-photo-option.is-selected {
+  border-color: #2b9e7f;
+  box-shadow: 0 0 0 4px rgba(43, 158, 127, 0.14), 0 4px 12px rgba(42, 94, 59, 0.08);
+}
+
+.settings-photo-option.is-selected::after {
+  content: '✓';
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #2b9e7f;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.settings-photo-empty {
+  margin: -2px 0 0;
+  color: #7a9b86;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .settings-message {
@@ -3301,6 +3517,109 @@ body {
 .activity-item-badge--new {
   background: rgba(240, 170, 60, 0.18);
   color: #b7791a;
+}
+
+/* 도움말(사용법) 화면 */
+.help-main {
+  gap: 22px;
+}
+
+.help-hero {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 8px 6px 4px;
+  text-align: center;
+}
+
+.help-hero-emoji {
+  font-size: 44px;
+  filter: drop-shadow(0 5px 6px rgba(48, 70, 39, 0.18));
+}
+
+.help-hero h1 {
+  color: #245f4b;
+  font-size: 24px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+}
+
+.help-hero p {
+  max-width: 30rem;
+  color: #4f7a63;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.65;
+  word-break: keep-all;
+}
+
+.help-section {
+  display: grid;
+  gap: 10px;
+}
+
+.help-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #2b7a5d;
+  font-size: 15px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+}
+
+.help-section h2::before {
+  content: '';
+  width: 5px;
+  height: 16px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #7bc47f, #2b9e7f);
+}
+
+.help-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 15px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 5px 14px rgba(42, 94, 59, 0.08);
+}
+
+.help-card-icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(155deg, #e3f1cf 0%, #f0f6dc 100%);
+  font-size: 22px;
+}
+
+.help-card-text {
+  display: grid;
+  gap: 3px;
+}
+
+.help-card-text strong {
+  color: #245f4b;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.help-card-text p {
+  color: #5a836d;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+.help-card-text em {
+  color: #2b9e7f;
+  font-style: normal;
+  font-weight: 800;
 }
 
 /* 고양이 상세 (도감 → 개별 고양이) */

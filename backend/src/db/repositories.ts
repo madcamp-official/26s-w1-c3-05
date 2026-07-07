@@ -32,6 +32,7 @@ export const toPublicUser = (user: UserRow) => ({
   email: user.email,
   authProvider: user.auth_provider,
   nickname: user.nickname,
+  nicknameOnboarded: Boolean(user.nickname_onboarded),
   profileImageUrl: user.profile_image_url,
 })
 
@@ -41,12 +42,12 @@ export const findUserByEmail = (email: string) => one<UserRow>('SELECT * FROM us
 export const findUserByOAuthIdentity = (provider: string, providerUserId: string) =>
   one<UserRow>('SELECT * FROM users WHERE auth_provider = $1 AND provider_user_id = $2', [provider, providerUserId])
 
-export const createUser = async (input: { username: string; passwordHash: string; nickname: string; email: string; role?: string }) => {
+export const createUser = async (input: { username: string; passwordHash: string; nickname: string; email: string; nicknameOnboarded?: boolean; role?: string }) => {
   const result = await query<UserRow>(
-    `INSERT INTO users (username, password_hash, nickname, email, role)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO users (username, password_hash, nickname, email, nickname_onboarded, role)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [input.username, input.passwordHash, input.nickname, input.email, input.role ?? 'user'],
+    [input.username, input.passwordHash, input.nickname, input.email, input.nicknameOnboarded ?? true, input.role ?? 'user'],
   )
   return result.rows[0]
 }
@@ -74,13 +75,14 @@ export const createOAuthUser = async (input: {
   authProvider: 'google' | 'kakao' | 'guest'
   providerUserId: string
   nickname: string
+  nicknameOnboarded?: boolean
   profileImageUrl?: string | null
   role?: string
 }) => {
   const result = await query<UserRow>(
     `INSERT INTO users
-      (username, password_hash, email, auth_provider, provider_user_id, nickname, profile_image_url, role)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      (username, password_hash, email, auth_provider, provider_user_id, nickname, nickname_onboarded, profile_image_url, role)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
     [
       input.username,
@@ -89,6 +91,7 @@ export const createOAuthUser = async (input: {
       input.authProvider,
       input.providerUserId,
       input.nickname,
+      input.nicknameOnboarded ?? true,
       input.profileImageUrl ?? null,
       input.role ?? 'user',
     ],
@@ -101,13 +104,17 @@ export const updateUserProfile = async (userId: number, input: { nickname?: stri
   if (!current) return undefined
   return one<UserRow>(
     `UPDATE users
-     SET nickname = $1, profile_image_url = $2, updated_at = CURRENT_TIMESTAMP
+     SET nickname = $1,
+         nickname_onboarded = CASE WHEN $4::text IS NULL THEN nickname_onboarded ELSE TRUE END,
+         profile_image_url = $2,
+         updated_at = CURRENT_TIMESTAMP
      WHERE id = $3
      RETURNING *`,
     [
       input.nickname ?? current.nickname,
       input.profileImageUrl === undefined ? current.profile_image_url : input.profileImageUrl,
       userId,
+      input.nickname ?? null,
     ],
   )
 }

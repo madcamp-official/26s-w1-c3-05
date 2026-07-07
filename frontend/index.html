@@ -27,37 +27,158 @@
       </div>
     </section>
 
-    <!-- ⚠️ TEMP: 백엔드 없이 지도 바로 보기 (지도 꾸미기 작업용) — 배포 전 이 블록 통째로 삭제 -->
-    <button id="temp-map-preview" type="button">🗺️ 지도 미리보기 (임시)</button>
+    <!-- ⚠️ TEMP: 디자인 QA용 — 만든 화면을 URL 타이핑 없이 한 번에 둘러보는 패널. 배포 전 이 블록 통째로 삭제 -->
+    <button id="temp-qa-nav-btn" type="button">🧭 화면 모아보기 (QA)</button>
+    <div id="temp-qa-nav-panel" hidden>
+      <div id="temp-qa-nav-backdrop"></div>
+      <div id="temp-qa-nav-list">
+        <header>
+          <strong>화면 모아보기</strong>
+          <button id="temp-qa-nav-close" type="button" aria-label="닫기">✕</button>
+        </header>
+        <button type="button" data-qa-go="welcome">오프닝</button>
+        <button type="button" data-qa-go="email-auth">이메일 로그인</button>
+        <button type="button" data-qa-go="signup">회원가입</button>
+        <button type="button" data-qa-go="nickname-setup">닉네임 입력</button>
+        <button type="button" data-qa-go="camera">카메라 촬영</button>
+        <button type="button" data-qa-go="capture-failure">촬영결과 · 감지실패</button>
+        <button type="button" data-qa-go="capture-existing">촬영결과 · 기존 고양이</button>
+        <button type="button" data-qa-go="capture-new">촬영결과 · 새 고양이(이름짓기)</button>
+        <button type="button" data-qa-go="capture-candidates">촬영결과 · 후보선택</button>
+        <button type="button" data-qa-go="menu">사이드 메뉴</button>
+        <button type="button" data-qa-go="profile">도감</button>
+        <button type="button" data-qa-go="detail">고양이 상세</button>
+        <button type="button" data-qa-go="favorites">즐겨찾기 목록</button>
+        <button type="button" data-qa-go="activity">내 활동 기록</button>
+        <button type="button" data-qa-go="settings">설정</button>
+        <button type="button" data-qa-go="gallery">갤러리(내 고양이)</button>
+        <button type="button" data-qa-go="help">도움말</button>
+      </div>
+    </div>
     <style>
-      #temp-map-preview {
+      #temp-qa-nav-btn {
         position: fixed;
-        left: 50%;
+        right: 16px;
         bottom: 24px;
-        transform: translateX(-50%);
         z-index: 9999;
-        padding: 12px 20px;
+        padding: 12px 18px;
         border: 2px dashed #d9534f;
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.92);
         color: #d9534f;
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 700;
         cursor: pointer;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
       }
+      #temp-qa-nav-panel {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+      }
+      #temp-qa-nav-panel[hidden] {
+        display: none;
+      }
+      #temp-qa-nav-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+      }
+      #temp-qa-nav-list {
+        position: absolute;
+        right: 16px;
+        bottom: 24px;
+        width: min(280px, 80vw);
+        max-height: 80vh;
+        overflow-y: auto;
+        display: grid;
+        gap: 6px;
+        padding: 14px;
+        border: 2px dashed #d9534f;
+        border-radius: 20px;
+        background: #fff;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+      }
+      #temp-qa-nav-list header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 4px;
+        color: #d9534f;
+      }
+      #temp-qa-nav-list header button {
+        border: none;
+        background: none;
+        font-size: 16px;
+        cursor: pointer;
+        color: #d9534f;
+      }
+      #temp-qa-nav-list button[data-qa-go] {
+        padding: 10px 12px;
+        border: 1px solid rgba(217, 83, 79, 0.3);
+        border-radius: 10px;
+        background: #fff5f5;
+        color: #333;
+        font-size: 13px;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+      }
+      #temp-qa-nav-list button[data-qa-go]:active {
+        background: #ffe3e3;
+      }
     </style>
     <script>
-      document.querySelector('#temp-map-preview').addEventListener('click', () => {
-        // 로그인/자동 1인칭 전환을 건너뛰고, 웰컴 오버레이만 걷어내
-        // 그 아래 깔려 있던 전체 지도(overview 탑다운)를 그대로 본다.
-        document.querySelector('#welcome')?.remove()
-        document.querySelector('#email-auth')?.setAttribute('hidden', '')
-        document.querySelector('#signup')?.setAttribute('hidden', '')
-        document.querySelector('#temp-map-preview').remove()
-        window.dispatchEvent(new CustomEvent('catchme:preview-map'))
-        window.dispatchEvent(new Event('resize')) // 지도 캔버스 크기 재계산
-      })
+      ;(() => {
+        const panel = document.querySelector('#temp-qa-nav-panel')
+        const openPanel = () => { panel.hidden = false }
+        const closePanel = () => { panel.hidden = true }
+        document.querySelector('#temp-qa-nav-btn').addEventListener('click', openPanel)
+        document.querySelector('#temp-qa-nav-close').addEventListener('click', closePanel)
+        document.querySelector('#temp-qa-nav-backdrop').addEventListener('click', closePanel)
+
+        // 화면 전환 전, 지금 열려있는 오버레이를 전부 닫아 겹치지 않게 한다.
+        function closeAllOverlays() {
+          const selectors = [
+            '#email-auth', '#signup', '#nickname-setup', '#capture-result', '#profile-dex', '#cat-detail',
+            '#settings-screen', '#cat-gallery', '#favorites-screen', '#activity-screen',
+            '#help-screen', '#camera-view', '#location-photos',
+          ]
+          selectors.forEach((sel) => { const el = document.querySelector(sel); if (el) el.hidden = true })
+          const menu = document.querySelector('#cat-menu')
+          if (menu) { menu.classList.remove('is-open'); menu.hidden = true }
+          const welcome = document.querySelector('#welcome')
+          if (welcome) welcome.hidden = true
+        }
+
+        const actions = {
+          welcome: () => { const w = document.querySelector('#welcome'); if (w) w.hidden = false },
+          'email-auth': () => document.querySelector('[data-email-login]')?.click(),
+          signup: () => window.openSignup?.(),
+          'nickname-setup': () => window.openNicknameSetup?.(),
+          camera: () => window.showCameraView?.(),
+          'capture-failure': () => window.showCaptureResult?.('failure'),
+          'capture-existing': () => window.showCaptureResult?.('existing'),
+          'capture-new': () => window.showCaptureResult?.('new'),
+          'capture-candidates': () => window.showCaptureResult?.('candidates'),
+          menu: () => document.querySelector('#menu-btn')?.click(),
+          profile: () => window.showProfileDex?.(),
+          detail: () => { const d = document.querySelector('#cat-detail'); if (d) d.hidden = false },
+          favorites: () => document.querySelector('[data-open-favorites]')?.click(),
+          activity: () => document.querySelector('[data-open-activity]')?.click(),
+          settings: () => window.showSettingsScreen?.(),
+          gallery: () => document.querySelector('#cat-gallery-btn')?.click(),
+          help: () => document.querySelector('[data-open-help]')?.click(),
+        }
+
+        document.querySelectorAll('[data-qa-go]').forEach((button) => {
+          button.addEventListener('click', () => {
+            closePanel()
+            closeAllOverlays()
+            actions[button.dataset.qaGo]?.()
+          })
+        })
+      })()
     </script>
     <!-- /TEMP -->
 
@@ -115,7 +236,7 @@
           </div>
           <p id="email-auth-message" class="auth-message" role="alert" hidden></p>
           <button class="email-auth-submit" type="submit">로그인</button>
-          <button id="open-signup" class="email-auth-resend" type="button">처음이라면 회원가입</button>
+          <button id="open-signup" class="email-auth-resend" type="button">처음이라면 계정 만들기</button>
         </form>
       </main>
     </section>
@@ -130,14 +251,14 @@
             <path d="m15 5-7 7 7 7" />
           </svg>
         </button>
-        <span class="signup-badge">마지막 단계</span>
+        <span class="signup-badge">이메일 인증</span>
       </header>
 
       <main class="signup-main">
         <div class="signup-copy">
           <span class="signup-paw" aria-hidden="true">🐾</span>
-          <h1 id="signup-title">반가워요!</h1>
-          <p>캣치미에서 사용할 정보를 입력해주세요.</p>
+          <h1 id="signup-title">계정을 만들어요</h1>
+          <p>이메일을 인증하고 비밀번호를 정하면, 다음 화면에서 닉네임만 입력해요.</p>
         </div>
 
         <form id="signup-form" class="signup-form">
@@ -181,19 +302,36 @@
             required
           />
 
-          <label for="display-name">사용자 이름</label>
+          <p id="signup-auth-message" class="auth-message" role="alert" hidden></p>
+          <button class="signup-submit" type="submit">계정 만들기</button>
+        </form>
+      </main>
+    </section>
+
+    <section id="nickname-setup" class="nickname-setup" aria-labelledby="nickname-setup-title" hidden>
+      <div class="nickname-setup-decoration nickname-setup-decoration--top" aria-hidden="true">🐾</div>
+      <div class="nickname-setup-decoration nickname-setup-decoration--bottom" aria-hidden="true">✿</div>
+
+      <main class="nickname-setup-main">
+        <div class="nickname-setup-copy">
+          <span class="nickname-setup-paw" aria-hidden="true">🐾</span>
+          <h1 id="nickname-setup-title">뭐라고 불러드릴까요?</h1>
+          <p>캣치미에서 사용할 닉네임을 정해주세요.</p>
+        </div>
+
+        <form id="nickname-setup-form" class="nickname-setup-form">
+          <label for="nickname-setup-input">닉네임</label>
           <input
-            id="display-name"
-            name="display-name"
+            id="nickname-setup-input"
+            name="nickname"
             type="text"
             autocomplete="nickname"
             maxlength="20"
-            placeholder="서비스에 표시될 이름"
+            placeholder="예: 고양이탐험가"
             required
           />
-
-          <p id="signup-auth-message" class="auth-message" role="alert" hidden></p>
-          <button class="signup-submit" type="submit">회원가입 완료</button>
+          <p id="nickname-setup-message" class="auth-message" role="alert" hidden></p>
+          <button class="nickname-setup-submit" type="submit">시작하기</button>
         </form>
       </main>
     </section>
@@ -555,14 +693,13 @@
             placeholder="이름을 입력해주세요"
             required
           />
-          <label for="settings-image-input">프로필 사진 URL <span class="settings-optional">(선택)</span></label>
-          <input
-            id="settings-image-input"
-            name="profileImageUrl"
-            type="url"
-            placeholder="https://... (비우면 기본 이미지)"
-            autocomplete="off"
-          />
+          <label for="settings-photo-picker">프로필 사진 <span class="settings-optional">(선택)</span></label>
+          <input id="settings-image-input" name="profileImageUrl" type="hidden" />
+          <div class="settings-photo-actions">
+            <button class="settings-photo-clear" type="button" data-settings-photo-clear>기본 이미지로</button>
+          </div>
+          <div id="settings-photo-picker" class="settings-photo-picker" aria-label="갤러리에서 프로필 사진 선택"></div>
+          <p id="settings-photo-empty" class="settings-photo-empty" hidden>아직 프로필로 쓸 갤러리 사진이 없어요.</p>
           <p id="settings-message" class="settings-message" role="status" hidden></p>
           <button class="settings-save" type="submit">저장하기</button>
         </form>
@@ -593,7 +730,7 @@
         </button>
 
         <nav class="cat-menu-list" aria-label="계정 메뉴">
-          <button class="cat-menu-item" type="button">
+          <button class="cat-menu-item" type="button" data-open-help data-menu-close>
             <span class="cat-menu-item-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9.4 9.3a2.7 2.7 0 0 1 5.2.9c0 1.8-2.6 2.4-2.6 4M12 17.2h.01" /></svg>
             </span>
@@ -729,6 +866,80 @@
             <span aria-hidden="true">🐾</span>
             <strong>아직 활동 기록이 없어요</strong>
             <p>고양이를 찍어 첫 기록을 남겨보세요.</p>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <!-- 도움말 (사용법 안내) -->
+    <section id="help-screen" class="profile-dex" aria-label="도움말" hidden>
+      <header class="profile-dex-header">
+        <button class="profile-dex-icon-btn" type="button" data-help-close aria-label="이전 화면으로 돌아가기">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+        </button>
+      </header>
+      <main class="profile-dex-main help-main">
+        <div class="help-hero">
+          <span class="help-hero-emoji" aria-hidden="true">🐾</span>
+          <h1>캣치미 사용법</h1>
+          <p>
+            KAIST 캠퍼스에서 만난 고양이를 사진으로 남겨보세요.<br />
+            사진을 올리면 어떤 고양이인지 자동으로 분류되고, 찍은 위치가 지도에 표시돼요.
+            나만의 고양이 컬렉션을 완성해 보세요!
+          </p>
+        </div>
+
+        <section class="help-section" aria-label="기본 버튼">
+          <h2>기본 버튼</h2>
+          <div class="help-card">
+            <span class="help-card-icon" aria-hidden="true">📷</span>
+            <div class="help-card-text">
+              <strong>카메라</strong>
+              <p>화면 <em>가운데 아래</em> 버튼을 눌러 고양이 사진을 찍어요.</p>
+            </div>
+          </div>
+          <div class="help-card">
+            <span class="help-card-icon" aria-hidden="true">🐈</span>
+            <div class="help-card-text">
+              <strong>내 고양이</strong>
+              <p>화면 <em>오른쪽 아래</em> 버튼을 눌러 내가 찍은 사진을 모아봐요.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="help-section" aria-label="지도 둘러보기">
+          <h2>지도 둘러보기</h2>
+          <div class="help-card">
+            <span class="help-card-icon" aria-hidden="true">🗺️</span>
+            <div class="help-card-text">
+              <strong>항공뷰</strong>
+              <p>KAIST 전체 지도를 한눈에 볼 수 있어요. 사진 마커를 누르면 그 자리에서 찍힌 고양이 사진들이 보여요.</p>
+            </div>
+          </div>
+          <div class="help-card">
+            <span class="help-card-icon" aria-hidden="true">🚶</span>
+            <div class="help-card-text">
+              <strong>로드뷰</strong>
+              <p>아바타의 시점에서 고양이들을 만나요. 사진 마커를 누르면 사진이 열리고, 두 손가락으로 확대·축소할 수 있어요.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="help-section" aria-label="사이드 메뉴">
+          <h2>사이드 메뉴</h2>
+          <div class="help-card">
+            <span class="help-card-icon" aria-hidden="true">📖</span>
+            <div class="help-card-text">
+              <strong>도감</strong>
+              <p>지금까지 수집한 고양이 컬렉션을 확인할 수 있어요.</p>
+            </div>
+          </div>
+          <div class="help-card">
+            <span class="help-card-icon" aria-hidden="true">⚙️</span>
+            <div class="help-card-text">
+              <strong>설정</strong>
+              <p>내 이름을 원하는 대로 바꿀 수 있어요.</p>
+            </div>
           </div>
         </section>
       </main>

@@ -74,6 +74,25 @@ Auth:
 - `POST /api/auth/logout`
 - `GET /api/auth/me`
 
+Auth responses return:
+
+```json
+{
+  "user": { "id": "1", "authProvider": "google", "nickname": "Google user", "nicknameOnboarded": false },
+  "accessToken": "jwt.access.token",
+  "isNewUser": true,
+  "needsNickname": true
+}
+```
+
+`isNewUser` is `true` when `/auth/signup`, `/auth/google`, or `/auth/kakao`
+creates a new account. `needsNickname` is the frontend routing flag: when true,
+the frontend shows a nickname-only onboarding screen, then saves the chosen
+nickname with `PATCH /api/profile/me`. After that patch succeeds, later logins
+with the same method return `needsNickname: false` and enter the map directly
+with the nickname stored in the DB. Guest login does not trigger nickname
+onboarding.
+
 Guest login creates an anonymous user row and returns the same JWT response shape:
 
 ```bash
@@ -167,6 +186,10 @@ Profile:
 
 - `GET /api/profile/me`
 - `PATCH /api/profile/me`
+
+`PATCH /api/profile/me` accepts gallery photos as profile images. Send
+`profileImageUrl` as either an external `http(s)` URL, an app-served
+`/uploads/...` path from `GET /api/gallery/me`, or `null` to clear it.
 
 Ranking:
 
