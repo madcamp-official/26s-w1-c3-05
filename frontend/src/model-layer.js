@@ -271,13 +271,160 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
   }
 }
 
+function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
+  return {
+    id: 'mock-building-world-layer',
+    type: 'custom',
+    renderingMode: '3d',
+    actors: [],
+    instances: new Map(),
+    originCoordinate: null,
+
+    setActors(actors) {
+      this.actors = actors
+      this.originCoordinate = null
+      if (this.scene) this.syncActors()
+    },
+
+    onAdd(map, gl) {
+      this.map = map
+      this.camera = new THREE.Camera()
+      this.scene = new THREE.Scene()
+      this.clock = new THREE.Clock()
+
+      this.scene.add(new THREE.HemisphereLight(0xffffff, 0x5f746f, 3.4))
+      const sunlight = new THREE.DirectionalLight(0xfff1d6, 2.2)
+      sunlight.position.set(-2, 3, 5)
+      this.scene.add(sunlight)
+
+      this.renderer = new THREE.WebGLRenderer({
+        canvas: map.getCanvas(),
+        context: gl,
+        antialias: true,
+      })
+      this.renderer.autoClear = false
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace
+      this.syncActors()
+    },
+
+    updateOrigin() {
+      const actor = this.actors[0]
+      if (!actor) {
+        this.originCoordinate = MercatorCoordinate.fromLngLat([0, 0], 0)
+        return
+      }
+      this.originCoordinate = MercatorCoordinate.fromLngLat(
+        [Number(actor.lng), Number(actor.lat)],
+        0
+      )
+    },
+
+    modelHeightMeters() {
+      const zoom = this.map?.getZoom?.() ?? 16
+      const t = clamp((zoom - 16) / (20 - 16), 0, 1)
+      return 40.0 + (9.0 - 40.0) * t
+    },
+
+    makeTransform(actor) {
+      if (!this.originCoordinate) this.updateOrigin()
+      const coordinate = MercatorCoordinate.fromLngLat(
+        [Number(actor.lng), Number(actor.lat)],
+        Number(actor.heightOffsetMeters ?? 0)
+      )
+      const scale =
+        coordinate.meterInMercatorCoordinateUnits() *
+        this.modelHeightMeters() *
+        Number(actor.modelScale ?? 1)
+      const matrix = new THREE.Matrix4()
+        .makeTranslation(
+          coordinate.x - this.originCoordinate.x,
+          coordinate.y - this.originCoordinate.y,
+          coordinate.z - this.originCoordinate.z
+        )
+        .scale(new THREE.Vector3(scale, -scale, scale))
+        .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2))
+        .multiply(new THREE.Matrix4().makeRotationZ(Number(actor.rotationY ?? 0)))
+      return matrix
+    },
+
+    async syncActors() {
+      const activeIds = new Set()
+
+      for (const actor of this.actors) {
+        if (!actor.modelUrl) continue
+        const id = String(actor.id)
+        activeIds.add(id)
+
+        let instance = this.instances.get(id)
+        const actorSignature = [
+          actor.modelUrl,
+          actor.rotationY,
+          actor.modelScale,
+        ].join('|')
+
+        if (instance && instance.actorSignature !== actorSignature) {
+          this.scene.remove(instance.root)
+          this.instances.delete(id)
+          instance = null
+        }
+
+        if (!instance) {
+          try {
+            const modelTemplate = await loadModelTemplate(actor.modelUrl)
+            const model = cloneModel(modelTemplate.template)
+            model.position.y = 0
+            const root = new THREE.Group()
+            root.matrixAutoUpdate = false
+            root.add(model)
+            this.scene.add(root)
+
+            instance = { root, actorSignature }
+            this.instances.set(id, instance)
+          } catch (error) {
+            console.warn('building GLB failed to load in custom layer:', actor.modelUrl, error)
+            continue
+          }
+        }
+
+        instance.root.matrix.copy(this.makeTransform(actor))
+        instance.root.matrixWorldNeedsUpdate = true
+      }
+
+      for (const [id, instance] of this.instances) {
+        if (activeIds.has(id)) continue
+        this.scene.remove(instance.root)
+        this.instances.delete(id)
+      }
+    },
+
+    render(_gl, args) {
+      if (!this.renderer || !this.scene || !this.camera) return
+      if (!this.actors.length) return
+      const delta = Math.min(this.clock.getDelta(), 0.05)
+      if (!this.originCoordinate) this.updateOrigin()
+      this.syncActors()
+      const mapMatrix = new THREE.Matrix4().fromArray(args.defaultProjectionData.mainMatrix)
+      const originMatrix = new THREE.Matrix4().makeTranslation(
+        this.originCoordinate.x,
+        this.originCoordinate.y,
+        this.originCoordinate.z
+      )
+      this.camera.projectionMatrix = mapMatrix.multiply(originMatrix)
+
+      this.renderer.resetState()
+      this.renderer.render(this.scene, this.camera)
+      this.map.triggerRepaint()
+    },
+  }
+}
+
 export function createAnimatedModelLayer(map) {
   const controller = {
     map,
     avatarPosition: null,
     avatarInstance: null,
     catActors: new Map(),
-    buildingActors: new Map(),
+    buildingWorldLayer: null,
     modelTemplates: new Map(),
     pendingCatActors: [],
     pendingBuildingActors: [],
@@ -407,8 +554,8 @@ export function createAnimatedModelLayer(map) {
 
     setBuildingActors(actors) {
       this.pendingBuildingActors = actors
-      if (!this.ready) return
-      this.syncBuildingActors()
+      this.ensureBuildingWorldLayer()
+      this.buildingWorldLayer?.setActors(actors)
     },
 
     async loadModelTemplate(url) {
@@ -423,51 +570,26 @@ export function createAnimatedModelLayer(map) {
       return model
     },
 
-    async syncBuildingActors() {
-      const activeIds = new Set()
+    ensureBuildingWorldLayer() {
+      if (this.buildingWorldLayer || !this.ready) return
+      this.buildingWorldLayer = createBuildingWorldLayer({
+        THREE: this.THREE,
+        cloneModel: this.cloneModel,
+        loadModelTemplate: this.loadModelTemplate.bind(this),
+      })
 
-      for (const actor of this.pendingBuildingActors) {
-        if (!actor.modelUrl) continue
-        const id = String(actor.id)
-        activeIds.add(id)
-
-        const position = [Number(actor.lng), Number(actor.lat)]
-        const existing = this.buildingActors.get(id)
-        if (existing) {
-          existing.position = position
-          existing.heightOffsetMeters = Number(actor.heightOffsetMeters ?? 0)
-          existing.yawOffset = Number(actor.rotationY ?? 0)
-          existing.fixedScreenScale = true
-          existing.keepUpright = true
-          existing.actor = actor
-          continue
+      const addLayer = () => {
+        if (this.map.getLayer(this.buildingWorldLayer.id)) return
+        if (this.map.getLayer('mock-cat-world-layer')) {
+          this.map.addLayer(this.buildingWorldLayer, 'mock-cat-world-layer')
+        } else {
+          this.map.addLayer(this.buildingWorldLayer)
         }
-
-        try {
-          const model = await this.loadModelTemplate(actor.modelUrl)
-          const instance = this.createInstance(
-            model.template,
-            model.animations,
-            null,
-            position,
-            228 * Number(actor.modelScale ?? 1)
-          )
-          instance.heightOffsetMeters = Number(actor.heightOffsetMeters ?? 0)
-          instance.yawOffset = Number(actor.rotationY ?? 0)
-          instance.fixedScreenScale = true
-          instance.keepUpright = true
-          instance.actor = actor
-          this.buildingActors.set(id, instance)
-        } catch (error) {
-          console.warn('mock building GLB failed to load:', actor.modelUrl, error)
-        }
+        this.buildingWorldLayer.setActors(this.pendingBuildingActors)
       }
 
-      for (const [id, instance] of this.buildingActors) {
-        if (activeIds.has(id)) continue
-        this.scene.remove(instance.anchor)
-        this.buildingActors.delete(id)
-      }
+      if (this.map.loaded()) addLayer()
+      else this.map.once('idle', addLayer)
     },
 
     async init() {
@@ -529,7 +651,7 @@ export function createAnimatedModelLayer(map) {
 
         if (this.avatarPosition) this.createAvatarInstance()
         this.ensureCatWorldLayer()
-        this.syncBuildingActors()
+        this.ensureBuildingWorldLayer()
 
         this.resize()
         window.addEventListener('resize', () => this.resize())
@@ -752,7 +874,6 @@ export function createAnimatedModelLayer(map) {
 
       if (this.avatarPosition && !this.avatarInstance) this.createAvatarInstance()
       if (this.avatarInstance) this.updateScreenPosition(this.avatarInstance)
-      this.buildingActors.forEach((instance) => this.updateScreenPosition(instance))
 
       const delta = Math.min(this.clock.getDelta(), 0.05)
       for (const mixer of this.mixers) mixer.update(delta)
