@@ -29,13 +29,14 @@ mapRouter.get('/map/objects', requireAuth, async (req: AuthRequest, res, next) =
     const query = z.object({
       lat: z.coerce.number().min(-90).max(90),
       lng: z.coerce.number().min(-180).max(180),
-      minDistance: z.coerce.number().min(0).default(30),
-      maxDistance: z.coerce.number().positive().default(250),
-      limit: z.coerce.number().int().positive().max(10).default(10),
+      // Cat towers sit at fixed building coordinates rather than being picked from
+      // a nearby-distance band, so this is just "what's within camera view" —
+      // the frontend passes the ground radius visible at max pinch-out zoom.
+      radius: z.coerce.number().positive().default(300),
+      // Safety cap only; the actual object count is small and fixed (curated
+      // building placements), not sampled down to fit a UI limit.
+      limit: z.coerce.number().int().positive().max(200).default(200),
       modelType: z.string().max(50).default('building'),
-    }).refine((value) => value.maxDistance >= value.minDistance, {
-      message: 'maxDistance must be greater than or equal to minDistance',
-      path: ['maxDistance'],
     }).parse(req.query)
 
     const origin = { latitude: query.lat, longitude: query.lng }
@@ -45,7 +46,7 @@ mapRouter.get('/map/objects', requireAuth, async (req: AuthRequest, res, next) =
         zone,
         distance: distanceMeters(origin, { latitude: Number(zone.latitude), longitude: Number(zone.longitude) }),
       }))
-      .filter((item) => item.distance >= query.minDistance && item.distance <= query.maxDistance)
+      .filter((item) => item.distance <= query.radius)
       .sort((a, b) => a.distance - b.distance)
       .slice(0, query.limit)
       .map((item) => mapObject(item.zone, item.distance))

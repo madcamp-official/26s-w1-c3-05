@@ -329,12 +329,27 @@ function updateCatMarkerPresentation() {
 
 map.on('zoom', updateCatMarkerPresentation)
 
+// Web Mercator 축척: 특정 위도·줌에서 화면 1px가 실제 몇 미터인지.
+function metersPerPixelAtZoom(zoom, latitude) {
+  return (156543.03392 * Math.cos((latitude * Math.PI) / 180)) / 2 ** zoom
+}
+
+// 아바타 추적(1인칭) 모드에서 카메라를 최대로 핀치아웃했을 때(FOLLOW_MIN_ZOOM) 실제로
+// 보이는 반경(m). 캣타워는 이제 "가까운 것 몇 개를 골라 보여주는" 게 아니라 정해진
+// 좌표에 항상 고정 배치되므로, 조회 범위도 "지금 화면에 보일 수 있는 최대 범위"를
+// 기준으로 삼는다 — 대각선 절반을 써서 화면 모서리까지 커버한다.
+function followModeMaxViewRadiusMeters(latitude) {
+  const metersPerPixel = metersPerPixelAtZoom(FOLLOW_MIN_ZOOM, latitude)
+  const { clientWidth, clientHeight } = map.getContainer()
+  const viewportDiagonalPx = Math.hypot(clientWidth || 0, clientHeight || 0)
+  return (viewportDiagonalPx / 2) * metersPerPixel
+}
+
 async function fetchMapObjects() {
   const params = new URLSearchParams({
     lat: String(DEFAULT_QUERY_POSITION.lat),
     lng: String(DEFAULT_QUERY_POSITION.lng),
-    maxDistance: '2000',
-    limit: '10',
+    radius: String(Math.round(followModeMaxViewRadiusMeters(DEFAULT_QUERY_POSITION.lat))),
   })
   const response = await authFetch(`/api/map/objects?${params}`)
   if (!response.ok) throw new Error('건물 정보를 불러오지 못했습니다.')

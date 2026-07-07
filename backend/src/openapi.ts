@@ -700,14 +700,14 @@ export const openApiDocument = {
     '/map/objects': {
       get: {
         tags: ['Map'],
-        summary: 'Nearby map objects filtered by a distance band',
+        summary: 'Map objects (cat towers/buildings) within a view radius',
+        description: 'Objects sit at fixed coordinates; radius should be the ground distance visible at max pinch-out zoom in avatar follow mode, not an arbitrary nearby-pick band.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'lat', in: 'query', required: true, schema: { type: 'number', example: 36.3727 } },
           { name: 'lng', in: 'query', required: true, schema: { type: 'number', example: 127.3602 } },
-          { name: 'minDistance', in: 'query', schema: { type: 'number', default: 30 } },
-          { name: 'maxDistance', in: 'query', schema: { type: 'number', default: 250 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10, maximum: 10 } },
+          { name: 'radius', in: 'query', schema: { type: 'number', default: 300 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 200, maximum: 200 } },
           { name: 'modelType', in: 'query', schema: { type: 'string', default: 'building' } },
         ],
         responses: {

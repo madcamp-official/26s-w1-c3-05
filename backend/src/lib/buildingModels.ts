@@ -6,12 +6,16 @@ export interface BuildingModel {
   rotationY: number
 }
 
+// "building" map objects are cat towers — the reusable models are the color
+// variants under frontend/public/models/tower/, not literal building models.
 export const BUILDING_MODELS: Record<string, BuildingModel> = {
-  library: { key: 'library', label: 'Library', assetUrl: '/models/buildings/library.glb', scale: 1, rotationY: 0 },
-  n1: { key: 'n1', label: 'N1', assetUrl: '/models/buildings/n1.glb', scale: 1, rotationY: 0 },
-  dorm: { key: 'dorm', label: 'Dormitory', assetUrl: '/models/buildings/dorm.glb', scale: 1, rotationY: 0 },
-  building: { key: 'building', label: 'Building', assetUrl: '/models/buildings/building.glb', scale: 1, rotationY: 0 },
-  default: { key: 'default', label: 'Campus object', assetUrl: '/models/buildings/default.glb', scale: 1, rotationY: 0 },
+  blue: { key: 'blue', label: '캣타워 (블루)', assetUrl: '/models/tower/cat_tower_blue_01_muted_unlit.glb', scale: 1, rotationY: 0 },
+  green: { key: 'green', label: '캣타워 (그린)', assetUrl: '/models/tower/cat_tower_green_01_muted_unlit.glb', scale: 1, rotationY: 0 },
+  pink: { key: 'pink', label: '캣타워 (핑크)', assetUrl: '/models/tower/cat_tower_pink_01_muted_unlit.glb', scale: 1, rotationY: 0 },
+  purple: { key: 'purple', label: '캣타워 (퍼플)', assetUrl: '/models/tower/cat_tower_purple_01_muted_unlit.glb', scale: 1, rotationY: 0 },
+  yellow: { key: 'yellow', label: '캣타워 (옐로우)', assetUrl: '/models/tower/cat_tower_yellow_01_muted_unlit.glb', scale: 1, rotationY: 0 },
+  gray_wood: { key: 'gray_wood', label: '캣타워 (그레이 우드)', assetUrl: '/models/tower/cat_tower_gray_wood_01_muted_unlit.glb', scale: 1, rotationY: 0 },
+  default: { key: 'default', label: '캣타워 (기본)', assetUrl: '/models/tower/cat_tower_blue_01_muted_unlit.glb', scale: 1, rotationY: 0 },
 }
 
 const normalizeKey = (value: string | null | undefined) =>
