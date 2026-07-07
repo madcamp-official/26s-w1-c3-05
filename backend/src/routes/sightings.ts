@@ -55,6 +55,7 @@ const newCatResponse = (input: {
   sightingId: number
   cat: { id: number; name: string | null; representative_photo_url: string | null; status: string }
   isNewCollection: boolean
+  placement: { latitude: number; longitude: number }
 }) => ({
   photoId: String(input.photoId),
   sightingId: String(input.sightingId),
@@ -67,6 +68,7 @@ const newCatResponse = (input: {
     isNewCollection: input.isNewCollection,
     status: input.cat.status,
   },
+  placement: input.placement,
   message: '새로운 고양이로 등록되었습니다.',
 })
 
@@ -224,6 +226,7 @@ sightingsRouter.post('/sightings', requireAuth, upload.single('image'), async (r
         sightingId: created.sighting.id,
         cat: created.cat,
         isNewCollection: created.collection.isNew,
+        placement: { latitude: created.sighting.placementLatitude, longitude: created.sighting.placementLongitude },
       }))
     }
 
@@ -248,6 +251,7 @@ sightingsRouter.post('/sightings', requireAuth, upload.single('image'), async (r
       sightingId: String(createdSighting.id),
       detectionStatus: 'matched',
       cat: { id: String(cat.id), name: cat.name, mainImageUrl: assetUrl(cat.representative_photo_url), isNewCollection: isNew },
+      placement: { latitude: createdSighting.placementLatitude, longitude: createdSighting.placementLongitude },
     })
   } catch (error) {
     next(error)
@@ -293,6 +297,7 @@ sightingsRouter.post('/sightings/:photoId/confirm-cat', requireAuth, async (req:
         sightingId: created.sighting.id,
         cat: created.cat,
         isNewCollection: created.collection.isNew,
+        placement: { latitude: created.sighting.placementLatitude, longitude: created.sighting.placementLongitude },
       }))
     }
 
@@ -305,7 +310,13 @@ sightingsRouter.post('/sightings/:photoId/confirm-cat', requireAuth, async (req:
     await setCatModelKeyIfNull(cat.id, resolveModelKey(cat, null))
     const createdSighting = await createSighting({ catId: cat.id, userId: user.id, photoId, latitude: Number(photo.latitude), longitude: Number(photo.longitude), zoneId: photo.zone_id, seenAt: takenAt })
     const { isNew } = await upsertCollection({ userId: user.id, catId: cat.id, photoId, seenAt: takenAt })
-    res.json({ detectionStatus: 'matched', photoId: String(photoId), sightingId: String(createdSighting.id), cat: { id: String(cat.id), name: cat.name, isNewCollection: isNew } })
+    res.json({
+      detectionStatus: 'matched',
+      photoId: String(photoId),
+      sightingId: String(createdSighting.id),
+      cat: { id: String(cat.id), name: cat.name, isNewCollection: isNew },
+      placement: { latitude: createdSighting.placementLatitude, longitude: createdSighting.placementLongitude },
+    })
   } catch (error) {
     next(error)
   }

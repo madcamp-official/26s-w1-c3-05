@@ -13,6 +13,7 @@
     "import:cat-references": "tsx src/tools/importCatReferences.ts",
     "embed:backfill": "tsx src/tools/backfillEmbeddings.ts",
     "vision:mock": "node tools/mock-vision-server.mjs",
+    "api:mock": "node tools/mock-api-server.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

@@ -427,14 +427,17 @@ export const createSighting = async (input: { catId: number; userId: number; pho
   const latOffset = (r * Math.cos(theta)) / 111000;
   const lngOffset = (r * Math.sin(theta)) / (111000 * Math.cos((input.latitude) * Math.PI / 180));
 
+  const placementLatitude = input.latitude + latOffset
+  const placementLongitude = input.longitude + lngOffset
+
   await upsertPlacement({
     catId: input.catId,
     sourceSightingId: sighting.id,
-    latitude: input.latitude + latOffset,
-    longitude: input.longitude + lngOffset,
+    latitude: placementLatitude,
+    longitude: placementLongitude,
     zoneId: input.zoneId ?? null
   })
-  return sighting
+  return { ...sighting, placementLatitude, placementLongitude }
 }
 
 export const updateCatSeen = (catId: number, seenAt: string) =>

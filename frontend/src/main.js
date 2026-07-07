@@ -1324,8 +1324,9 @@ async function processCapturedFile(file) {
     renderCaptureResponse(result, dataUrl)
 
     if (['matched', 'new_cat_candidate'].includes(result?.detectionStatus)) {
+      if (result.placement) photo.position = [result.placement.longitude, result.placement.latitude]
       await keepSuccessfulPhoto(photo)
-      refreshCatActors(position).catch((error) => console.warn('지도 고양이를 갱신하지 못했습니다.', error))
+      refreshCatActors(photo.position).catch((error) => console.warn('지도 고양이를 갱신하지 못했습니다.', error))
       pendingCapturedPhoto = null
     }
   } catch (error) {
@@ -1356,9 +1357,12 @@ captureCandidateForm?.addEventListener('submit', async (event) => {
 
   try {
     const result = await confirmSightingCandidate(selected)
-    const refreshPosition = pendingConfirmation?.photo?.position ?? markerLngLat()
     renderCaptureResponse(result, pendingConfirmation?.imageUrl)
     if (['matched', 'new_cat_candidate'].includes(result?.detectionStatus)) {
+      if (result.placement && pendingConfirmation?.photo) {
+        pendingConfirmation.photo.position = [result.placement.longitude, result.placement.latitude]
+      }
+      const refreshPosition = pendingConfirmation?.photo?.position ?? markerLngLat()
       await keepSuccessfulPhoto(pendingConfirmation?.photo)
       refreshCatActors(refreshPosition).catch((error) => console.warn('지도 고양이를 갱신하지 못했습니다.', error))
       pendingConfirmation = null
