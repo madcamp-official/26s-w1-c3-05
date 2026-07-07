@@ -96,6 +96,12 @@ export function getStoredUser() {
   }
 }
 
+export function updateStoredUser(user) {
+  if (!user) return null
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  return user
+}
+
 export function hasSession() {
   return Boolean(getAccessToken() && getStoredUser())
 }
