@@ -1,9 +1,9 @@
 import { MercatorCoordinate } from 'maplibre-gl'
 
 const THREE_VERSION = '0.180.0'
-const THREE_CDN = `https://esm.sh/three@${THREE_VERSION}`
-const GLTF_LOADER_CDN = `${THREE_CDN}/examples/jsm/loaders/GLTFLoader.js`
-const SKELETON_UTILS_CDN = `${THREE_CDN}/examples/jsm/utils/SkeletonUtils.js`
+const THREE_CDN = "https://esm.sh/three@" + THREE_VERSION
+const GLTF_LOADER_CDN = THREE_CDN + "/examples/jsm/loaders/GLTFLoader.js"
+const SKELETON_UTILS_CDN = THREE_CDN + "/examples/jsm/utils/SkeletonUtils.js"
 
 const clamp = (value, minimum, maximum) =>
   Math.min(maximum, Math.max(minimum, value))
@@ -12,13 +12,7 @@ const clamp = (value, minimum, maximum) =>
 // 시점 전환 시 미쿠가 돌아보는 게 아니라, 원래 그쪽을 보고 있던 것처럼 보인다.
 const AVATAR_WORLD_HEADING = Math.PI
 
-// 줌에 따른 모델 크기: 카메라가 다가갈수록(줌인) 지도와 함께 커진다.
-// 지수 1이면 지도와 완전히 같은 비율, 낮출수록 완만해진다.
-// (지수를 1에 가깝게 올리면 꽃과 원근은 더 잘 맞지만, 팔로우 모드 줌 범위(16~20)에서
-// MODEL_MAX_ZOOM_SCALE 상한에 zoom 17 부근부터 걸려버려 모델이 계속 최대 확대 상태로
-// 고정되고, 그만큼 늘어난 텍스처/폴리곤이 뭉개져 보인다. 0.41은 이 상한에 걸리지 않는
-// 한도 내에서 고른 값이라 원복함 — 화질과 완전한 원근 일치는 이 구조에서 서로 트레이드오프.)
-const MODEL_BASE_ZOOM = 14.1 // 이 줌(전체 시점)에서 모델이 기준 크기(basePixelHeight)
+const MODEL_BASE_ZOOM = 14.1
 const MODEL_ZOOM_EXPONENT = 0.41
 const MODEL_MIN_ZOOM_SCALE = 0.35
 const MODEL_MAX_ZOOM_SCALE = 7
@@ -40,7 +34,6 @@ const AVATAR_SHADOW_OPACITY = 0.22
 const AVATAR_SHADOW_SCALE = [0.42, 0.42, 1]
 const AVATAR_SHADOW_POSITION = [0, 0, -0.04]
 const AVATAR_SHADOW_ROTATION_X = -Math.PI / 2
-// 고양이와 상호작용 가능한 범위를 나타내는 원 (윤곽선만, 채우기 없음).
 const AVATAR_RANGE_COLOR = 0xffffff
 const AVATAR_RANGE_OPACITY = 0.8
 const AVATAR_RANGE_RADIUS = 2.4
@@ -173,7 +166,7 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
         )
         .scale(new THREE.Vector3(scale, -scale, scale))
         .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2))
-        .multiply(new THREE.Matrix4().makeRotationZ(Number(actor.rotationY ?? 0)))
+        .multiply(new THREE.Matrix4().makeRotationY(Number(actor.rotationY ?? 0)))
       return matrix
     },
 
@@ -371,7 +364,7 @@ function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
         )
         .scale(new THREE.Vector3(scale, -scale, scale))
         .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2))
-        .multiply(new THREE.Matrix4().makeRotationZ(Number(actor.rotationY ?? 0)))
+        .multiply(new THREE.Matrix4().makeRotationY(Number(actor.rotationY ?? 0)))
       return matrix
     },
 
@@ -460,123 +453,316 @@ function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
   }
 }
 
+function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
+  return {
+    id: 'mock-avatar-world-layer',
+    type: 'custom',
+    renderingMode: '3d',
+    position: null,
+    heading: Math.PI,
+    visibilityProgress: 0,
+    visibilityTarget: 0,
+
+    setFollowing(isFollowing) {
+      this.visibilityTarget = isFollowing ? 1 : 0
+      if (this.scene) this.scene.visible = true
+      this.map?.triggerRepaint?.()
+    },
+
+    setPosition(position) {
+      this.position = position
+      if (this.scene) {
+        this.originCoordinate = MercatorCoordinate.fromLngLat(this.position, 0)
+      }
+      this.map?.triggerRepaint?.()
+    },
+
+    setHeading(heading) {
+      this.heading = heading
+      this.map?.triggerRepaint?.()
+    },
+
+    playAnimation(name) {
+      if (!this.mixer || !animations?.length) return false
+      const clip = animations.find((c) => c.name.toLowerCase() === name.toLowerCase()) ??
+        animations.find((c) => c.name.toLowerCase().includes(name.toLowerCase()))
+      if (!clip) return false
+
+      const action = this.mixer.clipAction(clip)
+      const prevAction = this.activeAction
+
+      if (prevAction && prevAction !== action) {
+        prevAction.fadeOut(0.2)
+      }
+
+      action.reset().fadeIn(0.2).play()
+      this.activeAction = action
+
+      const returnToIdle = () => {
+        this.mixer.removeEventListener('finished', returnToIdle)
+        const idleClip = animations.find((c) => /idle/i.test(c.name)) ?? animations[0]
+        if (idleClip) {
+          const idleAction = this.mixer.clipAction(idleClip)
+          idleAction.reset().fadeIn(0.25).play()
+          action.fadeOut(0.25)
+          this.activeAction = idleAction
+        }
+      }
+
+      action.loop = THREE.LoopOnce
+      action.clampWhenFinished = true
+      this.mixer.addEventListener('finished', returnToIdle)
+      this.map.triggerRepaint()
+      return true
+    },
+
+    modelHeightMeters() {
+      const zoom = this.map?.getZoom?.() ?? CAT_WORLD_SCALE_ZOOM_START
+      const t = clamp(
+        (zoom - CAT_WORLD_SCALE_ZOOM_START) / (CAT_WORLD_SCALE_ZOOM_END - CAT_WORLD_SCALE_ZOOM_START),
+        0,
+        1
+      )
+      return CAT_WORLD_HEIGHT_METERS + (CAT_WORLD_CLOSE_HEIGHT_METERS - CAT_WORLD_HEIGHT_METERS) * t
+    },
+
+    getScreenPosition() {
+      if (!this.root || !this.camera || !this.map) return null
+      const vector = new THREE.Vector3(0, 0.5, 0)
+      vector.applyMatrix4(this.root.matrixWorld)
+      vector.applyMatrix4(this.camera.projectionMatrix)
+      
+      const canvas = this.map.getCanvas()
+      const width = canvas.clientWidth
+      const height = canvas.clientHeight
+      
+      return {
+        x: (vector.x * 0.5 + 0.5) * width,
+        y: (0.5 - vector.y * 0.5) * height,
+      }
+    },
+
+    onAdd(map, gl) {
+      this.map = map
+      this.camera = new THREE.Camera()
+      this.scene = new THREE.Scene()
+      this.scene.visible = this.visibilityProgress > 0 || this.visibilityTarget > 0
+      this.clock = new THREE.Clock()
+      this.mixers = []
+
+      this.scene.add(new THREE.HemisphereLight(0xffffff, 0x5f746f, 3.4))
+      const sunlight = new THREE.DirectionalLight(0xfff1d6, 2.2)
+      sunlight.position.set(-2, 3, 5)
+      this.scene.add(sunlight)
+
+      this.renderer = new THREE.WebGLRenderer({
+        canvas: map.getCanvas(),
+        context: gl,
+        antialias: true,
+      })
+      this.renderer.autoClear = false
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace
+
+      this.model = cloneModel(template)
+      
+      const points = []
+      for (let i = 0; i < 64; i += 1) {
+        const angle = (i / 64) * Math.PI * 2
+        points.push(new THREE.Vector3(Math.cos(angle) * 2.4, 0, Math.sin(angle) * 2.4))
+      }
+      const ring = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints(points),
+        new THREE.LineBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.8,
+        })
+      )
+      ring.position.y = 0.01
+      
+      this.root = new THREE.Group()
+      this.root.matrixAutoUpdate = false
+      this.root.add(this.model)
+      this.root.add(ring)
+      this.scene.add(this.root)
+
+      if (animations?.length) {
+        this.mixer = new THREE.AnimationMixer(this.model)
+        const idleClip = animations.find((c) => /idle/i.test(c.name)) ?? animations[0]
+        if (idleClip) {
+          this.activeAction = this.mixer.clipAction(idleClip)
+          this.activeAction.play()
+        }
+        this.mixers.push(this.mixer)
+      }
+
+      if (this.position) {
+        this.originCoordinate = MercatorCoordinate.fromLngLat(this.position, 0)
+      }
+    },
+
+    makeTransform() {
+      if (!this.position || !this.originCoordinate) return new THREE.Matrix4()
+      const coordinate = MercatorCoordinate.fromLngLat(this.position, 0)
+      const visibilityScale = this.visibilityProgress * this.visibilityProgress * (3 - 2 * this.visibilityProgress)
+      const scale = coordinate.meterInMercatorCoordinateUnits() * this.modelHeightMeters() * 3.0 * visibilityScale
+      const mapBearing = (this.map.getBearing() * Math.PI) / 180
+
+      const matrix = new THREE.Matrix4()
+        .makeTranslation(
+          coordinate.x - this.originCoordinate.x,
+          coordinate.y - this.originCoordinate.y,
+          coordinate.z - this.originCoordinate.z
+        )
+        .scale(new THREE.Vector3(scale, -scale, scale))
+        .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2))
+        .multiply(new THREE.Matrix4().makeRotationY(Math.PI + mapBearing))
+      return matrix
+    },
+
+    render(_gl, args) {
+      if (!this.renderer || !this.scene || !this.camera || !this.position || !this.originCoordinate) return
+      const delta = Math.min(this.clock.getDelta(), 0.05)
+      const visibilityStep = delta / 0.45
+      this.visibilityProgress =
+        this.visibilityTarget > this.visibilityProgress
+          ? Math.min(this.visibilityTarget, this.visibilityProgress + visibilityStep)
+          : Math.max(this.visibilityTarget, this.visibilityProgress - visibilityStep)
+      const shouldRender = this.visibilityProgress > 0 || this.visibilityTarget > 0
+      this.scene.visible = shouldRender
+      if (!shouldRender) return
+
+      this.root.matrix.copy(this.makeTransform())
+      this.root.matrixWorldNeedsUpdate = true
+
+      const mapMatrix = new THREE.Matrix4().fromArray(args.defaultProjectionData.mainMatrix)
+      const originMatrix = new THREE.Matrix4().makeTranslation(
+        this.originCoordinate.x,
+        this.originCoordinate.y,
+        this.originCoordinate.z
+      )
+      this.camera.projectionMatrix = mapMatrix.multiply(originMatrix)
+
+      for (const mixer of this.mixers) mixer.update(delta)
+
+      this.renderer.resetState()
+      this.renderer.render(this.scene, this.camera)
+      this.map.triggerRepaint()
+    },
+  }
+}
+
 export function createAnimatedModelLayer(map) {
   const controller = {
     map,
     avatarPosition: null,
-    avatarInstance: null,
-    catActors: new Map(),
+    avatarWorldLayer: null,
+    catWorldLayer: null,
     buildingWorldLayer: null,
     modelTemplates: new Map(),
     pendingCatActors: [],
     pendingBuildingActors: [],
-    mixers: [],
     ready: false,
     isFollowing: false,
 
     setAvatarPosition(position) {
       this.avatarPosition = [...position]
-      if (this.avatarInstance) this.avatarInstance.position = [...position]
+      this.ensureAvatarWorldLayer()
+      if (this.avatarWorldLayer) this.avatarWorldLayer.setPosition(position)
     },
 
     setFollowing(isFollowing) {
       this.isFollowing = Boolean(isFollowing)
-      this.catWorldLayer?.setFollowing(this.isFollowing)
-      // 모델은 항상 지도 좌표·지도 방향에 고정. 시점 전환 연출(줌·pitch·패딩)은
-      // main.js의 easeTo가 한 번의 애니메이션으로 담당한다.
+      if (this.catWorldLayer) this.catWorldLayer.setFollowing(this.isFollowing)
+      if (this.avatarWorldLayer) this.avatarWorldLayer.setFollowing(this.isFollowing)
     },
 
     isAvatarHit(point, radiusPx = 78) {
-      if (!this.avatarInstance?.anchor?.visible || !this.width || !this.height) return false
-      const x = this.avatarInstance.anchor.position.x + this.width / 2
-      const y = this.height / 2 - this.avatarInstance.anchor.position.y
-      return Math.hypot(point.x - x, point.y - y) <= radiusPx
-    },
-
-    findAnimationClip(animations, candidates) {
-      const normalized = candidates.map((name) => name.toLowerCase().replace(/[\s_-]+/g, ''))
-      return animations?.find((clip) => normalized.includes(clip.name.toLowerCase().replace(/[\s_-]+/g, ''))) ??
-        animations?.find((clip) => normalized.some((name) => clip.name.toLowerCase().replace(/[\s_-]+/g, '').includes(name))) ??
-        null
+      if (this.avatarWorldLayer) {
+        const screenPoint = this.avatarWorldLayer.getScreenPosition()
+        if (screenPoint) {
+          const distance = Math.hypot(point.x - screenPoint.x, point.y - screenPoint.y)
+          return distance <= radiusPx
+        }
+      }
+      return false
     },
 
     playAvatarAnimation(name = 'excited_jump') {
-      if (!this.avatarInstance?.mixer || !this.avatarAnimations?.length) return false
-      const clip = this.findAnimationClip(this.avatarAnimations, [
-        name,
-        'excited_jump',
-        'exicted_jump',
-        'excited jump',
-        'exicted jump',
-        'jump',
-        'excited',
-      ])
-      if (!clip) return false
-
-      const { THREE } = this
-      const mixer = this.avatarInstance.mixer
-      const idleClip = this.findIdleClip(this.avatarAnimations)
-      const action = mixer.clipAction(clip)
-      const idleAction = idleClip ? mixer.clipAction(idleClip) : null
-      const previousAction = this.avatarActiveAction ?? idleAction
-      if (this.avatarReturnToIdle) {
-        mixer.removeEventListener('finished', this.avatarReturnToIdle)
-        this.avatarReturnToIdle = null
+      if (this.avatarWorldLayer) {
+        return this.avatarWorldLayer.playAnimation(name)
       }
-
-      if (previousAction && previousAction !== action) {
-        previousAction.enabled = true
-        previousAction.setEffectiveWeight(1)
-        previousAction.play()
-      }
-
-      action.reset()
-      action.setLoop(THREE.LoopOnce, 1)
-      action.clampWhenFinished = true
-      action.setEffectiveTimeScale(1)
-      action.setEffectiveWeight(1)
-      action.play()
-      if (previousAction && previousAction !== action) action.crossFadeFrom(previousAction, 0.12, false)
-      else action.fadeIn(0.08)
-      this.avatarActiveAction = action
-
-      const returnToIdle = (event) => {
-        if (event.action !== action) return
-        mixer.removeEventListener('finished', returnToIdle)
-        this.avatarReturnToIdle = null
-        if (idleAction) {
-          idleAction.reset()
-          idleAction.setEffectiveTimeScale(1)
-          idleAction.setEffectiveWeight(1)
-          idleAction.play()
-          idleAction.crossFadeFrom(action, 0.16, false)
-          this.avatarActiveAction = idleAction
-        } else {
-          action.fadeOut(0.12)
-          this.avatarActiveAction = null
-        }
-      }
-      this.avatarReturnToIdle = returnToIdle
-      mixer.addEventListener('finished', returnToIdle)
-      return true
+      return false
     },
 
-    addCat() {
-      // 3D 고양이 모델은 쓰지 않는다. 사진 위치는 DOM 사진 아이콘 마커로만 표시.
+    cloneModel(template) {
+      return this.cloneModelFn ? this.cloneModelFn(template) : template.clone()
     },
 
-    setCatActors(actors) {
-      this.pendingCatActors = actors
-      if (!this.ready || !this.catTemplate) return
-      this.ensureCatWorldLayer()
-      this.catWorldLayer?.setActors(actors)
+    async init() {
+      try {
+        const [THREE, loaderModule, skeletonModule] = await Promise.all([
+          import(/* @vite-ignore */ THREE_CDN),
+          import(/* @vite-ignore */ GLTF_LOADER_CDN),
+          import(/* @vite-ignore */ SKELETON_UTILS_CDN),
+        ])
+
+        this.THREE = THREE
+        this.cloneModelFn = skeletonModule.clone
+        this.loader = new loaderModule.GLTFLoader()
+
+        const [avatarGltf, catGltf, bushGltf] = await Promise.all([
+          this.loader.loadAsync(AVATAR_MODEL_URL),
+          this.loader.loadAsync(CAT_MODEL_URL),
+          this.loader.loadAsync(BUSH_MODEL_URL),
+        ])
+
+        this.enhanceModelQuality(avatarGltf.scene)
+        this.enhanceModelQuality(catGltf.scene)
+        this.enhanceModelQuality(bushGltf.scene)
+
+        this.avatarTemplate = this.normalizeModel(avatarGltf.scene)
+        this.avatarAnimations = avatarGltf.animations
+        this.catTemplate = this.normalizeModel(catGltf.scene)
+        this.catAnimations = catGltf.animations
+        this.bushTemplate = this.normalizeModel(bushGltf.scene)
+        this.bushAnimations = bushGltf.animations
+        this.ready = true
+        document.documentElement.classList.add('models-ready')
+
+        this.ensureAvatarWorldLayer()
+        this.ensureCatWorldLayer()
+        this.ensureBuildingWorldLayer()
+      } catch (error) {
+        console.warn('3D 캐릭터 모델을 불러오지 못했습니다.', error)
+      }
+    },
+
+    ensureAvatarWorldLayer() {
+      if (this.avatarWorldLayer || !this.ready || !this.avatarTemplate) return
+      this.avatarWorldLayer = createAvatarWorldLayer({
+        THREE: this.THREE,
+        cloneModel: this.cloneModel.bind(this),
+        template: this.avatarTemplate,
+        animations: this.avatarAnimations,
+      })
+
+      const addLayer = () => {
+        if (this.map.getLayer(this.avatarWorldLayer.id)) return
+        this.map.addLayer(this.avatarWorldLayer)
+        this.avatarWorldLayer.setFollowing(this.isFollowing)
+        if (this.avatarPosition) this.avatarWorldLayer.setPosition(this.avatarPosition)
+      }
+
+      if (this.map.loaded()) addLayer()
+      else this.map.once('idle', addLayer)
     },
 
     ensureCatWorldLayer() {
       if (this.catWorldLayer || !this.ready || !this.catTemplate) return
       this.catWorldLayer = createCatWorldLayer({
         THREE: this.THREE,
-        cloneModel: this.cloneModel,
+        cloneModel: this.cloneModel.bind(this),
         template: this.catTemplate,
         animations: this.catAnimations,
         bushTemplate: this.bushTemplate,
@@ -595,41 +781,11 @@ export function createAnimatedModelLayer(map) {
       else this.map.once('idle', addLayer)
     },
 
-    setBuildingActors(actors) {
-      this.pendingBuildingActors = actors
-      this.ensureBuildingWorldLayer()
-      this.buildingWorldLayer?.setActors(actors)
-    },
-
-    async loadModelTemplate(url) {
-      if (this.modelTemplates.has(url)) return this.modelTemplates.get(url)
-      if (this.loadingTemplates?.has(url)) return this.loadingTemplates.get(url)
-
-      if (!this.loadingTemplates) {
-        this.loadingTemplates = new Map()
-      }
-
-      const loadPromise = (async () => {
-        const gltf = await this.loader.loadAsync(url)
-        this.enhanceModelQuality(gltf.scene)
-        const model = {
-          template: this.normalizeModel(gltf.scene),
-          animations: gltf.animations,
-        }
-        this.modelTemplates.set(url, model)
-        this.loadingTemplates.delete(url)
-        return model
-      })()
-
-      this.loadingTemplates.set(url, loadPromise)
-      return loadPromise
-    },
-
     ensureBuildingWorldLayer() {
       if (this.buildingWorldLayer || !this.ready) return
       this.buildingWorldLayer = createBuildingWorldLayer({
         THREE: this.THREE,
-        cloneModel: this.cloneModel,
+        cloneModel: this.cloneModel.bind(this),
         loadModelTemplate: this.loadModelTemplate.bind(this),
       })
 
@@ -647,80 +803,21 @@ export function createAnimatedModelLayer(map) {
       else this.map.once('idle', addLayer)
     },
 
-    async init() {
-      try {
-        const [THREE, loaderModule, skeletonModule] = await Promise.all([
-          import(/* @vite-ignore */ THREE_CDN),
-          import(/* @vite-ignore */ GLTF_LOADER_CDN),
-          import(/* @vite-ignore */ SKELETON_UTILS_CDN),
-        ])
-
-        this.THREE = THREE
-        this.cloneModel = skeletonModule.clone
-        this.scene = new THREE.Scene()
-        this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 2000)
-        this.camera.position.z = 1000
-        this.clock = new THREE.Clock()
-        this.loader = new loaderModule.GLTFLoader()
-
-        this.canvas = document.createElement('canvas')
-        this.canvas.className = 'model-overlay'
-        this.canvas.setAttribute('aria-hidden', 'true')
-        this.map.getContainer().append(this.canvas)
-
-        this.renderer = new THREE.WebGLRenderer({
-          canvas: this.canvas,
-          antialias: true,
-          alpha: true,
-          premultipliedAlpha: true,
-          powerPreference: 'high-performance',
-          precision: 'highp',
-        })
-        this.renderer.setClearColor(0x000000, 0)
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace
-        this.maxTextureAnisotropy = this.renderer.capabilities.getMaxAnisotropy()
-        this.updateRendererPixelRatio()
-
-        this.scene.add(new THREE.HemisphereLight(0xffffff, 0x55766d, 3.2))
-        const sunlight = new THREE.DirectionalLight(0xfff1d6, 2.4)
-        sunlight.position.set(-2, 3, 5)
-        this.scene.add(sunlight)
-
-        const [avatarGltf, catGltf, bushGltf] = await Promise.all([
-          this.loader.loadAsync(AVATAR_MODEL_URL),
-          this.loader.loadAsync(CAT_MODEL_URL),
-          this.loader.loadAsync(BUSH_MODEL_URL),
-        ])
-        this.enhanceModelQuality(avatarGltf.scene)
-        this.enhanceModelQuality(catGltf.scene)
-        this.enhanceModelQuality(bushGltf.scene)
-
-        this.avatarTemplate = this.normalizeModel(avatarGltf.scene)
-        this.avatarAnimations = avatarGltf.animations
-        this.catTemplate = this.normalizeModel(catGltf.scene)
-        this.catAnimations = catGltf.animations
-        this.bushTemplate = this.normalizeModel(bushGltf.scene)
-        this.bushAnimations = bushGltf.animations
-        this.ready = true
-        document.documentElement.classList.add('models-ready')
-
-        if (this.avatarPosition) this.createAvatarInstance()
-        this.ensureCatWorldLayer()
-        this.ensureBuildingWorldLayer()
-
-        this.resize()
-        window.addEventListener('resize', () => this.resize())
-        this.animate()
-      } catch (error) {
-        console.warn('3D 캐릭터 모델을 불러오지 못했습니다.', error)
-      }
+    addCat() {
+      // 3D 고양이 모델은 쓰지 않는다. 사진 위치는 DOM 사진 아이콘 마커로만 표시.
     },
 
-    updateRendererPixelRatio() {
-      if (!this.renderer) return
-      this.renderer.setPixelRatio(
-        clamp(window.devicePixelRatio || 1, 1, MAX_RENDER_PIXEL_RATIO)
-      )
+    setCatActors(actors) {
+      this.pendingCatActors = actors
+      if (!this.ready || !this.catTemplate) return
+      this.ensureCatWorldLayer()
+      this.catWorldLayer?.setActors(actors)
+    },
+
+    setBuildingActors(actors) {
+      this.pendingBuildingActors = actors
+      this.ensureBuildingWorldLayer()
+      this.buildingWorldLayer?.setActors(actors)
     },
 
     enhanceModelQuality(source) {
@@ -767,172 +864,28 @@ export function createAnimatedModelLayer(map) {
       return holder
     },
 
-    createInstance(template, animations, animationName, position, basePixelHeight, options = {}) {
-      const { THREE } = this
-      const model = this.cloneModel(template)
-      const anchor = new THREE.Group()
-      // X(카메라 고도 기울임)를 가장 바깥 회전으로 둬야
-      // 방향(Y)을 튼 모델이 화면에서 옆으로 기울지 않고 곧게 선다.
-      anchor.rotation.order = 'XYZ'
-      if (options.withShadow) {
-        anchor.add(this.createAvatarShadow())
-      }
-      if (options.withRangeRing) {
-        anchor.add(this.createAvatarRangeRing())
-      }
-      anchor.add(model)
-      this.scene.add(anchor)
+    async loadModelTemplate(url) {
+      if (this.modelTemplates.has(url)) return this.modelTemplates.get(url)
+      if (this.loadingTemplates?.has(url)) return this.loadingTemplates.get(url)
 
-      let mixer = null
-      if (animations?.length) {
-        mixer = new THREE.AnimationMixer(model)
-        const clip = animationName
-          ? THREE.AnimationClip.findByName(animations, animationName) ?? animations[0]
-          : animations[0]
-        if (clip) mixer.clipAction(clip).play()
-        this.mixers.push(mixer)
+      if (!this.loadingTemplates) {
+        this.loadingTemplates = new Map()
       }
 
-      return {
-        anchor,
-        basePixelHeight,
-        mixer,
-        position: [...position],
-      }
-    },
+      const loadPromise = (async () => {
+        const gltf = await this.loader.loadAsync(url)
+        this.enhanceModelQuality(gltf.scene)
+        const model = {
+          template: this.normalizeModel(gltf.scene),
+          animations: gltf.animations,
+        }
+        this.modelTemplates.set(url, model)
+        this.loadingTemplates.delete(url)
+        return model
+      })()
 
-    findIdleClip(animations) {
-      return animations?.find((clip) => clip.name.toLowerCase() === 'idle') ??
-        animations?.find((clip) => clip.name.toLowerCase() === 'avatar_idle') ??
-        animations?.find((clip) => /idle/i.test(clip.name)) ??
-        animations?.[0] ??
-        null
-    },
-
-    createAvatarShadow() {
-      const { THREE } = this
-      const shadow = new THREE.Mesh(
-        new THREE.CircleGeometry(0.5, 48),
-        new THREE.MeshBasicMaterial({
-          color: AVATAR_SHADOW_COLOR,
-          depthTest: false,
-          depthWrite: false,
-          opacity: AVATAR_SHADOW_OPACITY,
-          transparent: true,
-        })
-      )
-
-      shadow.name = 'avatar_ground_shadow'
-      shadow.renderOrder = -1
-      shadow.rotation.x = AVATAR_SHADOW_ROTATION_X
-      shadow.position.set(...AVATAR_SHADOW_POSITION)
-      shadow.scale.set(...AVATAR_SHADOW_SCALE)
-      return shadow
-    },
-
-    createAvatarRangeRing() {
-      const { THREE } = this
-      const points = []
-      for (let i = 0; i < AVATAR_RANGE_SEGMENTS; i += 1) {
-        const angle = (i / AVATAR_RANGE_SEGMENTS) * Math.PI * 2
-        points.push(new THREE.Vector3(Math.cos(angle) * AVATAR_RANGE_RADIUS, Math.sin(angle) * AVATAR_RANGE_RADIUS, 0))
-      }
-      const ring = new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(points),
-        new THREE.LineBasicMaterial({
-          color: AVATAR_RANGE_COLOR,
-          transparent: true,
-          opacity: AVATAR_RANGE_OPACITY,
-          depthTest: false,
-          depthWrite: false,
-        })
-      )
-
-      ring.name = 'avatar_interaction_range'
-      ring.renderOrder = -1
-      ring.rotation.x = AVATAR_RANGE_ROTATION_X
-      ring.position.set(...AVATAR_RANGE_POSITION)
-      return ring
-    },
-
-    createAvatarInstance() {
-      if (this.avatarInstance || !this.avatarPosition) return
-      this.avatarInstance = this.createInstance(
-        this.avatarTemplate,
-        this.avatarAnimations,
-        this.findIdleClip(this.avatarAnimations)?.name ?? 'idle',
-        this.avatarPosition,
-        32,
-        { withShadow: false, withRangeRing: false }
-      )
-    },
-
-    resize() {
-      if (!this.renderer || !this.camera) return
-      const width = this.map.getContainer().clientWidth
-      const height = this.map.getContainer().clientHeight
-      if (!width || !height) return
-
-      this.width = width
-      this.height = height
-      this.updateRendererPixelRatio()
-      this.renderer.setSize(width, height, false)
-      this.camera.left = -width / 2
-      this.camera.right = width / 2
-      this.camera.top = height / 2
-      this.camera.bottom = -height / 2
-      this.camera.updateProjectionMatrix()
-    },
-
-    updateScreenPosition(instance) {
-      const point = this.map.project(instance.position)
-      const zoomScale = clamp(
-        2 ** ((this.map.getZoom() - MODEL_BASE_ZOOM) * MODEL_ZOOM_EXPONENT),
-        MODEL_MIN_ZOOM_SCALE,
-        MODEL_MAX_ZOOM_SCALE
-      )
-      const distance = this.avatarPosition
-        ? distanceMeters(this.avatarPosition, instance.position)
-        : Number(instance.fallbackDistanceMeters ?? 100)
-      const perspectiveScale = instance.distancePerspective
-        ? clamp(
-            CAT_PERSPECTIVE_REFERENCE_METERS / (distance + CAT_PERSPECTIVE_OFFSET_METERS),
-            CAT_PERSPECTIVE_MIN_SCALE,
-            CAT_PERSPECTIVE_MAX_SCALE
-          )
-        : 1
-      const modelScale = instance.basePixelHeight * (instance.fixedScreenScale ? 1 : zoomScale) * perspectiveScale
-      const margin = Math.max(120, modelScale)
-      const mapBearing = (this.map.getBearing() * Math.PI) / 180
-      const cameraElevation = ((90 - this.map.getPitch()) * Math.PI) / 180
-
-      instance.anchor.visible =
-        point.x >= -margin &&
-        point.x <= this.width + margin &&
-        point.y >= -margin &&
-        point.y <= this.height + margin
-      instance.anchor.position.set(
-        point.x - this.width / 2,
-        this.height / 2 - point.y + Number(instance.heightOffsetMeters ?? 0) * (instance.fixedScreenScale ? 1 : zoomScale) * 1.4,
-        0
-      )
-      instance.anchor.scale.setScalar(modelScale)
-      // 미쿠는 항상 지도 기준 같은 방향을 본다. 카메라가 돌면 옆·앞모습이 보인다.
-      instance.anchor.rotation.y = AVATAR_WORLD_HEADING - mapBearing * Number(instance.yawFollowFactor ?? 1) + Number(instance.yawOffset ?? 0)
-      // 지도 카메라가 낮아질수록 모델을 옆에서, 높아질수록 위에서 본다.
-      instance.anchor.rotation.x = instance.keepUpright ? 0 : cameraElevation
-    },
-
-    animate() {
-      if (!this.ready) return
-      requestAnimationFrame(() => this.animate())
-
-      if (this.avatarPosition && !this.avatarInstance) this.createAvatarInstance()
-      if (this.avatarInstance) this.updateScreenPosition(this.avatarInstance)
-
-      const delta = Math.min(this.clock.getDelta(), 0.05)
-      for (const mixer of this.mixers) mixer.update(delta)
-      this.renderer.render(this.scene, this.camera)
+      this.loadingTemplates.set(url, loadPromise)
+      return loadPromise
     },
   }
 
