@@ -2,6 +2,7 @@ services:
   postgres:
     image: postgres:16
     container_name: myocatmongo-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: myocatmongo
       POSTGRES_PASSWORD: myocatmongo
@@ -15,11 +16,50 @@ services:
     build:
       context: ../vision-service
     container_name: myocatmongo-vision
+    restart: unless-stopped
     environment:
       VISION_MODEL: yolo11n.pt
       CAT_CONFIDENCE_THRESHOLD: "0.25"
     ports:
       - "8001:8001"
 
+  backend:
+    build:
+      context: .
+    container_name: myocatmongo-backend
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - vision
+    env_file:
+      - .env.production
+    environment:
+      # These override .env.production so the containers reach each other by
+      # service name on the compose network, regardless of what's in the file.
+      DATABASE_URL: "postgres://myocatmongo:myocatmongo@postgres:5432/myocatmongo"
+      VISION_SERVICE_URL: "http://vision:8001"
+      # Vision downloads uploaded images over HTTP to run detection/identification,
+      # so this must resolve to the backend container, not the public domain.
+      PUBLIC_BASE_URL: "http://backend:4000"
+    ports:
+      - "4000:4000"
+    volumes:
+      - backend-uploads:/app/uploads
+
+  # Outbound-only connection to Cloudflare that exposes `backend` publicly at
+  # whatever hostname the tunnel is configured with — no inbound port/firewall
+  # rule needed on the kcloud VM. Configure the hostname -> http://backend:4000
+  # route from the Cloudflare Zero Trust dashboard when creating the tunnel.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: myocatmongo-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - .env.production
+    depends_on:
+      - backend
+
 volumes:
   postgres-data:
+  backend-uploads:

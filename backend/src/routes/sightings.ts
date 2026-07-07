@@ -24,7 +24,7 @@ import { getCurrentUser, requireAuth, type AuthRequest } from '../lib/auth.js'
 import { resolveModelKey } from '../lib/catModels.js'
 import { findZoneId } from '../lib/geo.js'
 import { HttpError } from '../lib/httpError.js'
-import { candidate, sighting } from '../lib/serializers.js'
+import { assetUrl, candidate, sighting } from '../lib/serializers.js'
 import { catVisionService } from '../services/catVision/index.js'
 import type { CatVisionResult } from '../services/catVision/types.js'
 
@@ -63,7 +63,7 @@ const newCatResponse = (input: {
   cat: {
     id: String(input.cat.id),
     name: input.cat.name,
-    mainImageUrl: input.cat.representative_photo_url,
+    mainImageUrl: assetUrl(input.cat.representative_photo_url),
     isNewCollection: input.isNewCollection,
     status: input.cat.status,
   },
@@ -247,7 +247,7 @@ sightingsRouter.post('/sightings', requireAuth, upload.single('image'), async (r
       photoId: String(photo.id),
       sightingId: String(createdSighting.id),
       detectionStatus: 'matched',
-      cat: { id: String(cat.id), name: cat.name, mainImageUrl: cat.representative_photo_url, isNewCollection: isNew },
+      cat: { id: String(cat.id), name: cat.name, mainImageUrl: assetUrl(cat.representative_photo_url), isNewCollection: isNew },
     })
   } catch (error) {
     next(error)

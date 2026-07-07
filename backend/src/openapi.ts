@@ -460,6 +460,79 @@ export const openApiDocument = {
         },
       },
     },
+    '/cats/{catId}/name': {
+      patch: {
+        tags: ['Cats'],
+        summary: '신규 발견(candidate) 고양이 이름 짓기',
+        description: '발견자(도감 등록자)만 가능하며 candidate 상태의 고양이에만 적용됩니다.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'catId', in: 'path', required: true, schema: { type: 'integer', example: 1 } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['name'], properties: { name: { type: 'string', example: '망고' } } } } },
+        },
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    cat: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string', example: '1' },
+                        name: { type: 'string', example: '망고' },
+                        mainImageUrl: { type: 'string', nullable: true },
+                        status: { type: 'string', example: 'candidate' },
+                        isNewCollection: { type: 'boolean', example: true },
+                      },
+                    },
+                    message: { type: 'string', example: '고양이 이름이 저장되었습니다.' },
+                  },
+                },
+              },
+            },
+          },
+          '400': { $ref: '#/components/responses/ValidationError' },
+          '403': { description: '발견자가 아님', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          '404': { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+    '/cats/{catId}/nickname': {
+      patch: {
+        tags: ['Cats'],
+        summary: '내 도감에서의 개인 별명 수정',
+        description: '공식 이름(cats.name)에는 영향을 주지 않는 사용자별 별명입니다. 도감에 등록된 고양이만 가능.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'catId', in: 'path', required: true, schema: { type: 'integer', example: 1 } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['customName'], properties: { customName: { type: 'string', nullable: true, example: '설탕이' } } } } },
+        },
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    catId: { type: 'string', example: '1' },
+                    customName: { type: 'string', nullable: true, example: '설탕이' },
+                    message: { type: 'string', example: '별명이 저장되었습니다.' },
+                  },
+                },
+              },
+            },
+          },
+          '400': { $ref: '#/components/responses/ValidationError' },
+          '404': { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
     '/collection': {
       get: {
         tags: ['Collection'],
@@ -634,7 +707,7 @@ export const openApiDocument = {
           { name: 'lng', in: 'query', required: true, schema: { type: 'number', example: 127.3602 } },
           { name: 'minDistance', in: 'query', schema: { type: 'number', default: 30 } },
           { name: 'maxDistance', in: 'query', schema: { type: 'number', default: 250 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', default: 30, maximum: 100 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10, maximum: 10 } },
           { name: 'modelType', in: 'query', schema: { type: 'string', default: 'building' } },
         ],
         responses: {
@@ -718,6 +791,77 @@ export const openApiDocument = {
         summary: '새로운 고양이 후보 목록 조회',
         security: [{ bearerAuth: [] }],
         responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/admin/cat-candidates/{catId}/approve': {
+      post: {
+        tags: ['Admin'],
+        summary: '후보 고양이를 공식 등록(candidate → active)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'catId', in: 'path', required: true, schema: { type: 'integer', example: 1 } }],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  officialName: { type: 'string', example: '망고' },
+                  pattern: { type: 'string', nullable: true, example: 'cheese' },
+                  description: { type: 'string', nullable: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { cat: { $ref: '#/components/schemas/AdminCat' }, message: { type: 'string', example: '새 고양이가 공식 등록되었습니다.' } },
+                },
+              },
+            },
+          },
+          '400': { $ref: '#/components/responses/ValidationError' },
+          '404': { $ref: '#/components/responses/NotFound' },
+          '409': { description: '이미 처리된 후보', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/admin/cat-candidates/{catId}/merge': {
+      post: {
+        tags: ['Admin'],
+        summary: '후보 고양이를 기존 고양이로 병합',
+        description: '사진/목격/임베딩/도감 데이터를 targetCatId로 이전하고 후보 고양이는 status=merged 처리합니다.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'catId', in: 'path', required: true, schema: { type: 'integer', example: 5, description: '병합될(source) 후보 고양이 ID' } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['targetCatId'], properties: { targetCatId: { type: 'integer', example: 1 } } } } },
+        },
+        responses: {
+          '200': {
+            description: 'OK',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    sourceCatId: { type: 'string', example: '5' },
+                    targetCatId: { type: 'string', example: '1' },
+                    message: { type: 'string', example: '기존 고양이와 병합되었습니다.' },
+                  },
+                },
+              },
+            },
+          },
+          '400': { $ref: '#/components/responses/ValidationError' },
+          '404': { $ref: '#/components/responses/NotFound' },
+        },
       },
     },
   },

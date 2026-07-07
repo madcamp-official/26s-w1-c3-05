@@ -10,7 +10,12 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# torchvision pulls in torch, and plain PyPI resolves that to the full CUDA build
+# (~2GB of nvidia_* wheels) even though this image has no GPU access. Install the
+# CPU-only build first so the later requirements.txt install finds it already
+# satisfied instead of downloading CUDA.
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+  && pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
