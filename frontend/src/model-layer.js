@@ -81,6 +81,7 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
     renderingMode: '3d',
     actors: [],
     instances: new Map(),
+    loadingIds: new Set(),
     originCoordinate: null,
     isFollowing: false,
     visibilityProgress: 0,
@@ -183,7 +184,12 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
         if (!actor.modelUrl) continue
         const id = String(actor.catId)
         activeIds.add(id)
+        
         let instance = this.instances.get(id)
+        if (this.loadingIds.has(id)) {
+          continue
+        }
+        
         const actorSignature = [
           actor.modelType,
           actor.modelUrl,
@@ -200,10 +206,16 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
 
         if (!instance) {
           const isBush = actor.modelType === 'bush'
+          this.loadingIds.add(id)
           try {
             const modelTemplate = isBush && bushTemplate
               ? { template: bushTemplate, animations: bushAnimations }
               : await loadModelTemplate(actor.modelUrl)
+
+            if (!activeIds.has(id)) {
+              this.loadingIds.delete(id)
+              continue
+            }
 
             const model = cloneModel(modelTemplate.template)
             model.position.y = -(isBush ? BUSH_WORLD_GROUND_SINK : CAT_WORLD_GROUND_SINK)
@@ -237,12 +249,15 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
             this.instances.set(id, instance)
           } catch (error) {
             console.warn('cat/bush GLB failed to load in custom layer:', actor.modelUrl, error)
-            continue
+          } finally {
+            this.loadingIds.delete(id)
           }
         }
 
-        instance.root.matrix.copy(this.makeTransform(actor))
-        instance.root.matrixWorldNeedsUpdate = true
+        if (instance) {
+          instance.root.matrix.copy(this.makeTransform(actor))
+          instance.root.matrixWorldNeedsUpdate = true
+        }
       }
 
       for (const [id, instance] of this.instances) {
@@ -290,6 +305,7 @@ function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
     renderingMode: '3d',
     actors: [],
     instances: new Map(),
+    loadingIds: new Set(),
     originCoordinate: null,
 
     setActors(actors) {
@@ -368,6 +384,10 @@ function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
         activeIds.add(id)
 
         let instance = this.instances.get(id)
+        if (this.loadingIds.has(id)) {
+          continue
+        }
+
         const actorSignature = [
           actor.modelUrl,
           actor.rotationY,
@@ -381,8 +401,15 @@ function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
         }
 
         if (!instance) {
+          this.loadingIds.add(id)
           try {
             const modelTemplate = await loadModelTemplate(actor.modelUrl)
+            
+            if (!activeIds.has(id)) {
+              this.loadingIds.delete(id)
+              continue
+            }
+
             const model = cloneModel(modelTemplate.template)
             model.position.y = 0
             const root = new THREE.Group()
@@ -394,12 +421,15 @@ function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
             this.instances.set(id, instance)
           } catch (error) {
             console.warn('building GLB failed to load in custom layer:', actor.modelUrl, error)
-            continue
+          } finally {
+            this.loadingIds.delete(id)
           }
         }
 
-        instance.root.matrix.copy(this.makeTransform(actor))
-        instance.root.matrixWorldNeedsUpdate = true
+        if (instance) {
+          instance.root.matrix.copy(this.makeTransform(actor))
+          instance.root.matrixWorldNeedsUpdate = true
+        }
       }
 
       for (const [id, instance] of this.instances) {
