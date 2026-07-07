@@ -1340,13 +1340,11 @@ async function restorePhotos() {
 }
 
 // 버튼을 누르면 다른 화면을 모두 닫고 실제 카메라 뷰파인더를 연다.
+// TEMP: 검증용으로 실시간 카메라(getUserMedia, HTTPS 필요) 건너뛰고 바로 갤러리 선택으로.
+// 원복 시 아래 if/else 블록을 되살리면 됨.
 cameraBtn.addEventListener('click', () => {
   returnToMap()
-  if (window.showCameraView) {
-    window.showCameraView()
-  } else {
-    cameraInput.click()
-  }
+  cameraInput.click()
 })
 
 // 뷰파인더에서 촬영했거나 기본 카메라/앨범에서 고른 사진을 공통 처리한다.

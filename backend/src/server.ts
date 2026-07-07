@@ -21,10 +21,12 @@ import { openApiDocument } from './openapi.js'
 
 const app = express()
 const port = Number(process.env.PORT ?? 4000)
-const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5173'
+// Comma-separated so local dev can allow both the Vite origin and a LAN IP
+// (for testing on a phone) at once, e.g. "http://localhost:5199,http://10.0.0.5:5199".
+const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173').split(',').map((value) => value.trim())
 
 app.use(helmet())
-app.use(cors({ origin: corsOrigin }))
+app.use(cors({ origin: corsOrigins }))
 app.use(express.json({ limit: '2mb' }))
 app.use('/uploads', express.static('uploads'))
 app.use(morgan('dev'))

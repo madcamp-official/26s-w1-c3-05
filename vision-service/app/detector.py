@@ -159,29 +159,87 @@ class CatDetector:
         }
 
     def dominant_color(self, image: Image.Image, box: dict[str, int]) -> str:
-        """Coarse coat-color class from the crop, used to pick a reusable 3D model."""
+        """Best-effort coat-type classifier; the backend maps the label to a 3D model.
+
+        Returns one of: calico, tuxedo, bicolor, orange, oatmeal, gray, white,
+        black, mixed.
+
+        Reliable part (plain color): black / white / gray / orange / oatmeal, plus
+        the multi-color coats (calico, tuxedo, bicolor) via colour-fraction + a
+        coarse top/bottom layout check.
+
+        NOT attempted here: tabby-vs-solid. Measured stripe/texture cues are
+        dominated by fur, whiskers and photo sharpness (a solid ginger tests as
+        *more* textured than a brown tabby), so the striped variants (cheese /
+        gray / orange tabby) can't be told from their solid counterparts by a
+        heuristic — those are reached only via an explicit pattern label or an
+        admin/finder choice, never auto-detected here.
+
+        Robustness measures over a naive box-average (which let bright backgrounds
+        dominate): sample only the central region (cat body, not box-edge
+        background) and classify per-pixel, so a coherent coat block outvotes
+        scattered background pixels.
+        """
         crop = image.crop((int(box["x1"]), int(box["y1"]), int(box["x2"]), int(box["y2"])))
         if crop.width < 2 or crop.height < 2:
             return "mixed"
-        hsv = np.asarray(crop.convert("HSV").resize((64, 64)), dtype=np.float64)
-        hue = hsv[..., 0]  # PIL hue is 0-255 mapping 0-360deg
+
+        # Central 60% region — box edges are mostly background.
+        width, height = crop.width, crop.height
+        cx0, cy0 = int(width * 0.20), int(height * 0.20)
+        cx1, cy1 = int(width * 0.80), int(height * 0.80)
+        center = crop.crop((cx0, cy0, cx1, cy1)) if (cx1 > cx0 and cy1 > cy0) else crop
+
+        hsv = np.asarray(center.convert("HSV").resize((64, 64)), dtype=np.float64)
+        hue = hsv[..., 0] * (360.0 / 255.0)  # PIL hue 0-255 -> degrees
         saturation = hsv[..., 1] / 255.0
         value = hsv[..., 2] / 255.0
-        mean_s = float(saturation.mean())
-        mean_v = float(value.mean())
 
-        if mean_v < 0.22:
-            return "black"
-        if mean_s < 0.18 and mean_v > 0.7:
-            return "white"
-        if mean_s < 0.20:
-            return "gray"
+        warm_hue = (hue <= 40.0) | (hue >= 330.0)
+        # Per-pixel masks (2D, so we can also reason about spatial layout).
+        black_mask = value < 0.24
+        white_mask = (saturation < 0.16) & (value > 0.72)
+        warm_mask = warm_hue & (saturation >= 0.28) & (value >= 0.25) & ~white_mask & ~black_mask
+        gray_mask = (saturation < 0.22) & (value >= 0.24) & (value <= 0.72) & ~white_mask & ~warm_mask
 
-        # Warm hues (red/orange/yellow) wrap around 0; ginger/brown cats live here.
-        warm = ((hue <= 35) | (hue >= 225)) & (saturation >= 0.25)
-        if float(warm.mean()) >= 0.45:
-            return "orange" if mean_v >= 0.5 else "brown"
-        return "mixed"
+        black_fraction = float(black_mask.mean())
+        white_fraction = float(white_mask.mean())
+        warm_fraction = float(warm_mask.mean())
+        gray_fraction = float(gray_mask.mean())
+        warm_saturation_mean = float(saturation[warm_mask].mean()) if warm_mask.any() else 0.0
+        warm_value_mean = float(value[warm_mask].mean()) if warm_mask.any() else 0.0
+
+        # --- multi-colour coats (conservative: only fire when clearly patched) ---
+        # These heuristics have poor precision on tabbies (a brown tabby with a
+        # white bib easily fakes a calico), so we bias toward MISSING a multi-colour
+        # coat — falling back to a solid model — rather than mislabelling a tabby.
+        # A false "solid orange" on a calico is far less jarring than a calico model
+        # on a plain ginger. Require vivid (not muted-tabby) orange for calico.
+        is_vivid_warm = warm_saturation_mean >= 0.55
+        if white_fraction >= 0.18 and warm_fraction >= 0.18 and black_fraction >= 0.12 and is_vivid_warm:
+            return "calico"
+
+        # Black & white, no warm patch -> tuxedo (black body + white chest) or bicolor.
+        if black_fraction >= 0.20 and white_fraction >= 0.18 and warm_fraction < 0.10:
+            white_top = float(white_mask[:32].mean())
+            white_bottom = float(white_mask[32:].mean())
+            black_top = float(black_mask[:32].mean())
+            if black_fraction >= white_fraction and black_top >= 0.25 and white_bottom > white_top:
+                return "tuxedo"
+            return "bicolor"
+
+        # --- single dominant colour ---
+        fractions = {"black": black_fraction, "white": white_fraction, "gray": gray_fraction, "warm": warm_fraction}
+        winner = max(fractions, key=fractions.get)
+        if fractions[winner] < 0.15:
+            return "mixed"
+
+        if winner == "warm":
+            # Oatmeal/cream = a light, muted warm; vivid warm is ginger orange.
+            if warm_saturation_mean < 0.42 and warm_value_mean >= 0.62:
+                return "oatmeal"
+            return "orange"
+        return {"black": "black", "white": "white", "gray": "gray"}[winner]
 
     @staticmethod
     def _variance_of_laplacian(gray: np.ndarray) -> float:
