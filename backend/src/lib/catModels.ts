@@ -11,21 +11,21 @@ export interface CatModel {
 // frontend/public/models/cats/<key>.glb — rename these paths if the actual GLB
 // filenames differ.
 export const CAT_MODELS: Record<string, CatModel> = {
-  calico: { key: 'calico', label: '삼색', assetUrl: '/models/cats/calico.glb', scale: 1 },
-  gray: { key: 'gray', label: '회색', assetUrl: '/models/cats/gray.glb', scale: 1 },
-  cheese_tabby: { key: 'cheese_tabby', label: '치즈 태비', assetUrl: '/models/cats/cheese_tabby.glb', scale: 1 },
-  bicolor: { key: 'bicolor', label: '하양/검정', assetUrl: '/models/cats/bicolor.glb', scale: 1 },
-  orange: { key: 'orange', label: '오렌지', assetUrl: '/models/cats/orange.glb', scale: 1 },
-  oatmeal: { key: 'oatmeal', label: '귀리', assetUrl: '/models/cats/oatmeal.glb', scale: 1 },
-  gray_tabby: { key: 'gray_tabby', label: '회색 태비', assetUrl: '/models/cats/gray_tabby.glb', scale: 1 },
-  orange_tabby: { key: 'orange_tabby', label: '오렌지 태비', assetUrl: '/models/cats/orange_tabby.glb', scale: 1 },
-  tuxedo: { key: 'tuxedo', label: '턱시도', assetUrl: '/models/cats/tuxedo.glb', scale: 1 },
-  white: { key: 'white', label: '흰색', assetUrl: '/models/cats/white.glb', scale: 1 },
-  black: { key: 'black', label: '까만', assetUrl: '/models/cats/black.glb', scale: 1 },
-  default: { key: 'default', label: '기본 고양이', assetUrl: '/models/cats/default.glb', scale: 1 },
+  calico: { key: 'calico', label: '삼색', assetUrl: '/models/cats/cat_cute_calico_01.glb', scale: 1 },
+  gray: { key: 'gray', label: '회색', assetUrl: '/models/cats/cat_cute_gray_01.glb', scale: 1 },
+  cheese_tabby: { key: 'cheese_tabby', label: '치즈 태비', assetUrl: '/models/cats/cat_cute_cheese_01.glb', scale: 1 },
+  bicolor: { key: 'bicolor', label: '하양/검정', assetUrl: '/models/cats/cat_cute_mask_01.glb', scale: 1 },
+  orange: { key: 'orange', label: '오렌지', assetUrl: '/models/cats/cat_cute_orange_01.glb', scale: 1 },
+  oatmeal: { key: 'oatmeal', label: '귀리', assetUrl: '/models/cats/cat_cute_orange_01.glb', scale: 1 },
+  gray_tabby: { key: 'gray_tabby', label: '회색 태비', assetUrl: '/models/cats/cat_cute_tabby_gray_01.glb', scale: 1 },
+  orange_tabby: { key: 'orange_tabby', label: '오렌지 태비', assetUrl: '/models/cats/cat_cute_tabby_orange_01.glb', scale: 1 },
+  tuxedo: { key: 'tuxedo', label: '턱시도', assetUrl: '/models/cats/cat_cute_tuxedo_01.glb', scale: 1 },
+  white: { key: 'white', label: '흰색', assetUrl: '/models/cats/cat_cute_white_01.glb', scale: 1 },
+  black: { key: 'black', label: '까만', assetUrl: '/models/cats/cat_cute_black_01.glb', scale: 1 },
+  default: { key: 'default', label: '기본 고양이', assetUrl: '/models/cat.glb', scale: 1 },
   // Backward-compat aliases for values that may already be stored in the DB.
-  tricolor: { key: 'tricolor', label: '삼색', assetUrl: '/models/cats/calico.glb', scale: 1 },
-  brown_tabby: { key: 'brown_tabby', label: '갈색 태비', assetUrl: '/models/cats/cheese_tabby.glb', scale: 1 },
+  tricolor: { key: 'tricolor', label: '삼색', assetUrl: '/models/cats/cat_cute_calico_01.glb', scale: 1 },
+  brown_tabby: { key: 'brown_tabby', label: '갈색 태비', assetUrl: '/models/cats/cat_cute_cheese_01.glb', scale: 1 },
 }
 
 // 아직 발견하지 않은 고양이를 가리는 수풀 모델.

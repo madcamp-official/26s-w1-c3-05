@@ -74,7 +74,7 @@ const CAT_WORLD_SCALE_ZOOM_START = 14.1
 const CAT_WORLD_SCALE_ZOOM_END = 18
 const CAT_WORLD_VISIBILITY_DURATION_SECONDS = 0.45
 
-function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemplate, bushAnimations }) {
+function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemplate, bushAnimations, loadModelTemplate }) {
   return {
     id: 'mock-cat-world-layer',
     type: 'custom',
@@ -176,10 +176,11 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
       return matrix
     },
 
-    syncActors() {
+    async syncActors() {
       const activeIds = new Set()
 
       for (const actor of this.actors) {
+        if (!actor.modelUrl) continue
         const id = String(actor.catId)
         activeIds.add(id)
         let instance = this.instances.get(id)
@@ -199,34 +200,45 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
 
         if (!instance) {
           const isBush = actor.modelType === 'bush'
-          const model = cloneModel(isBush && bushTemplate ? bushTemplate : template)
-          model.position.y = -(isBush ? BUSH_WORLD_GROUND_SINK : CAT_WORLD_GROUND_SINK)
-          const root = new THREE.Group()
-          root.matrixAutoUpdate = false
-          root.add(model)
-          this.scene.add(root)
+          try {
+            const modelTemplate = isBush && bushTemplate
+              ? { template: bushTemplate, animations: bushAnimations }
+              : await loadModelTemplate(actor.modelUrl)
 
-          let mixer = null
-          if (isBush) {
-            // 수풀은 특정 동작 하나만 고르지 않고 갖고 있는 애니메이션을 전부 동시 재생한다.
-            if (bushAnimations?.length) {
-              mixer = new THREE.AnimationMixer(model)
-              for (const clip of bushAnimations) {
-                mixer.clipAction(clip).play()
+            const model = cloneModel(modelTemplate.template)
+            model.position.y = -(isBush ? BUSH_WORLD_GROUND_SINK : CAT_WORLD_GROUND_SINK)
+            const root = new THREE.Group()
+            root.matrixAutoUpdate = false
+            root.add(model)
+            this.scene.add(root)
+
+            let mixer = null
+            if (isBush) {
+              if (bushAnimations?.length) {
+                mixer = new THREE.AnimationMixer(model)
+                for (const clip of bushAnimations) {
+                  mixer.clipAction(clip).play()
+                }
+                this.mixers.push(mixer)
               }
-              this.mixers.push(mixer)
+            } else {
+              const loadedClips = modelTemplate.animations || animations
+              const clip = loadedClips?.find((c) => c.name.toLowerCase() === String(actor.animationKey || 'sit').toLowerCase()) ??
+                loadedClips?.find((c) => /sit|sitting|seated/i.test(c.name)) ??
+                loadedClips?.[0]
+              if (clip) {
+                mixer = new THREE.AnimationMixer(model)
+                mixer.clipAction(clip).play()
+                this.mixers.push(mixer)
+              }
             }
-          } else {
-            const clip = this.findSittingClip(actor.animationKey)
-            if (clip) {
-              mixer = new THREE.AnimationMixer(model)
-              mixer.clipAction(clip).play()
-              this.mixers.push(mixer)
-            }
-          }
 
-          instance = { root, mixer, actorSignature }
-          this.instances.set(id, instance)
+            instance = { root, mixer, actorSignature }
+            this.instances.set(id, instance)
+          } catch (error) {
+            console.warn('cat/bush GLB failed to load in custom layer:', actor.modelUrl, error)
+            continue
+          }
         }
 
         instance.root.matrix.copy(this.makeTransform(actor))
@@ -539,6 +551,7 @@ export function createAnimatedModelLayer(map) {
         animations: this.catAnimations,
         bushTemplate: this.bushTemplate,
         bushAnimations: this.bushAnimations,
+        loadModelTemplate: this.loadModelTemplate.bind(this),
       })
 
       const addLayer = () => {
@@ -560,14 +573,26 @@ export function createAnimatedModelLayer(map) {
 
     async loadModelTemplate(url) {
       if (this.modelTemplates.has(url)) return this.modelTemplates.get(url)
-      const gltf = await this.loader.loadAsync(url)
-      this.enhanceModelQuality(gltf.scene)
-      const model = {
-        template: this.normalizeModel(gltf.scene),
-        animations: gltf.animations,
+      if (this.loadingTemplates?.has(url)) return this.loadingTemplates.get(url)
+
+      if (!this.loadingTemplates) {
+        this.loadingTemplates = new Map()
       }
-      this.modelTemplates.set(url, model)
-      return model
+
+      const loadPromise = (async () => {
+        const gltf = await this.loader.loadAsync(url)
+        this.enhanceModelQuality(gltf.scene)
+        const model = {
+          template: this.normalizeModel(gltf.scene),
+          animations: gltf.animations,
+        }
+        this.modelTemplates.set(url, model)
+        this.loadingTemplates.delete(url)
+        return model
+      })()
+
+      this.loadingTemplates.set(url, loadPromise)
+      return loadPromise
     },
 
     ensureBuildingWorldLayer() {
