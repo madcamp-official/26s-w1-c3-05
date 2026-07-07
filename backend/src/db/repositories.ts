@@ -492,7 +492,7 @@ export const findPlacements = () =>
     `SELECT cp.*, c.name, c.representative_photo_url, c.pattern, c.model_key
      FROM cat_placements cp
      JOIN cats c ON c.id = cp.cat_id
-     WHERE c.status = 'active'
+     WHERE c.status IN ('active', 'candidate')
      ORDER BY cp.updated_at DESC`,
   )
 
@@ -510,7 +510,7 @@ export const findCatActors = () =>
      FROM cat_placements cp
      JOIN cats c ON c.id = cp.cat_id
      LEFT JOIN campus_zones z ON z.id = cp.zone_id
-     WHERE c.status = 'active'
+     WHERE c.status IN ('active', 'candidate')
      ORDER BY cp.updated_at DESC`,
   )
 

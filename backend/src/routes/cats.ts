@@ -60,7 +60,7 @@ catsRouter.get('/cats/:catId', requireAuth, async (req: AuthRequest, res, next) 
     const user = getCurrentUser(req)
     const catId = z.coerce.number().int().positive().parse(req.params.catId)
     const cat = await findCatById(catId)
-    if (!cat || cat.status !== 'active') throw new HttpError(404, '고양이를 찾을 수 없습니다.', 'NOT_FOUND')
+    if (!cat || (cat.status !== 'active' && cat.status !== 'candidate')) throw new HttpError(404, '고양이를 찾을 수 없습니다.', 'NOT_FOUND')
     res.json(catDetail(cat, await findCollectionItem(user.id, cat.id)))
   } catch (error) {
     next(error)
