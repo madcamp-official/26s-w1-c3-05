@@ -717,6 +717,14 @@ let pendingConfirmation = null
 let pendingCapturedPhoto = null
 let pendingNewCatId = null
 
+function showCaptureLoading() {
+  window.showCaptureResult?.('loading')
+}
+
+function hideCaptureLoading() {
+  if (captureResult?.dataset.state === 'loading') captureResult.hidden = true
+}
+
 function normalizedGpsAccuracy(accuracy) {
   if (!Number.isFinite(accuracy) || accuracy <= 0) return DEFAULT_GPS_ACCURACY_METERS
   return clamp(accuracy, 5, 80)
@@ -1293,6 +1301,7 @@ async function processCapturedFile(file) {
       window.alert('사진 위치를 확인할 수 없습니다. 위치 권한을 허용한 뒤 다시 촬영해 주세요.')
       return
     }
+    showCaptureLoading()
     let dataUrl
     try {
       dataUrl = await imageFileToDataUrl(file)
@@ -1311,6 +1320,7 @@ async function processCapturedFile(file) {
 
     pendingCapturedPhoto = photo
     const result = await uploadSighting(file, position)
+    hideCaptureLoading()
     renderCaptureResponse(result, dataUrl)
 
     if (['matched', 'new_cat_candidate'].includes(result?.detectionStatus)) {
@@ -1319,12 +1329,14 @@ async function processCapturedFile(file) {
       pendingCapturedPhoto = null
     }
   } catch (error) {
+    hideCaptureLoading()
     console.warn('사진 처리에 실패했습니다.', error)
     renderFailureCapture({
       detectionStatus: 'rejected',
       message: error?.message ?? '사진을 제출하지 못했습니다. 잠시 후 다시 시도해주세요.',
     })
   } finally {
+    hideCaptureLoading()
     cameraInput.value = '' // 연속 촬영과 같은 사진 재선택을 허용
   }
 }
