@@ -2,7 +2,21 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { addFlowerDecorations } from './FlowerDecorations.js'
 import { createAnimatedModelLayer } from './model-layer.js'
-import { API_BASE_URL, authFetch, hasSession } from './auth.js'
+import { API_BASE_URL, authFetch, getStoredUser, hasSession, logout, updateStoredUser } from './auth.js'
+import {
+  getCat,
+  getCats,
+  getCatSightings,
+  getCollection,
+  getGallery,
+  getMe,
+  getMySightings,
+  getProfile,
+  setCatName,
+  setCatNickname,
+  setFavorite,
+  updateProfile,
+} from './api.js'
 
 // 아직 GPS를 못 받았을 때 지도 조회에 쓰는 기본 위치 (KAIST 중앙도서관 부근).
 const DEFAULT_QUERY_POSITION = { lat: 36.3727, lng: 127.3602 }
@@ -738,6 +752,9 @@ const locationPhotosBackdrop = document.querySelector('#location-photos-backdrop
 const locationPhotosClose = document.querySelector('#location-photos-close')
 const locationPhotoCount = document.querySelector('#location-photo-count')
 const locationPhotoStrip = document.querySelector('#location-photo-strip')
+const captureResult = document.querySelector('#capture-result')
+const captureCandidateForm = document.querySelector('[data-capture-candidate-form]')
+const captureConfirmButton = document.querySelector('[data-capture-confirm]')
 
 const PHOTO_DB_NAME = 'kaist-cat-photos'
 const PHOTO_STORE_NAME = 'photos'
@@ -749,6 +766,9 @@ const RECENT_PHOTO_SNAP_METERS = 250
 let catPhotos = []
 const photoMarkerGroups = new Map()
 const newestPhotoFirst = (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+let pendingConfirmation = null
+let pendingCapturedPhoto = null
+let pendingNewCatId = null
 
 function normalizedGpsAccuracy(accuracy) {
   if (!Number.isFinite(accuracy) || accuracy <= 0) return DEFAULT_GPS_ACCURACY_METERS
@@ -1077,6 +1097,220 @@ function renderGallery() {
   }
 }
 
+function formatPercent(value) {
+  if (!Number.isFinite(Number(value))) return null
+  return `${Math.round(Number(value) * 100)}%`
+}
+
+function capturePhotoUrl(data) {
+  return data?.cat?.mainImageUrl || data?.cat?.representativePhotoUrl || data?.imageUrl || null
+}
+
+function setCaptureCopy(panelName, { kicker, title, description } = {}) {
+  const panel = document.querySelector(`[data-capture-panel="${panelName}"]`)
+  if (!panel) return
+  const kickerElement = panel.querySelector('.capture-result-kicker')
+  const titleElement = panel.querySelector('.capture-result-copy h1')
+  const descriptionElement = panel.querySelector('.capture-result-copy p')
+  if (kickerElement && kicker !== undefined) kickerElement.textContent = kicker
+  if (titleElement && title) titleElement.textContent = title
+  if (descriptionElement && description) descriptionElement.textContent = description
+}
+
+function renderMatchedCapture(data, imageUrl) {
+  const catName = data?.cat?.name || '이 고양이'
+  setCaptureCopy('existing', {
+    kicker: data?.cat?.isNewCollection ? '도감에 새로 담겼어요!' : '도감에서 찾았어요!',
+    title: `${catName}를 만났어요`,
+    description: data?.message || '목격 기록과 도감이 업데이트됐어요.',
+  })
+
+  const badge = document.querySelector('.capture-match-badge')
+  if (badge) badge.textContent = '일치 완료'
+
+  const card = document.querySelector('.capture-cat-card')
+  if (card) {
+    const name = card.querySelector('h2')
+    const description = card.querySelector('p')
+    const index = card.querySelector('strong')
+    if (name) {
+      name.textContent = catName
+      const paw = document.createElement('span')
+      paw.textContent = ' 🐾'
+      name.append(paw)
+    }
+    if (description) description.textContent = data?.cat?.isNewCollection ? '처음 만난 고양이로 도감에 추가됐어요.' : '이전에 만난 고양이와 일치했어요.'
+    if (index) index.textContent = data?.cat?.id ? `도감 #${data.cat.id}` : '도감'
+  }
+
+  const foundInfo = document.querySelector('.capture-found-info')
+  if (foundInfo) {
+    foundInfo.replaceChildren(
+      Object.assign(document.createElement('span'), { textContent: `📍 ${photoDateLabel(new Date().toISOString())}` }),
+      Object.assign(document.createElement('span'), { textContent: `기록 #${data?.sightingId ?? '-'}` })
+    )
+  }
+
+  window.showCaptureResult?.('existing', imageUrl || capturePhotoUrl(data))
+}
+
+function renderNewCatCapture(data, imageUrl) {
+  // 이 고양이의 id를 기억해 두면 아래 이름짓기 폼(2-1)에서 바로 이름을 저장할 수 있다.
+  pendingNewCatId = data?.cat?.id ?? null
+  setCaptureCopy('new', {
+    title: '새로운 고양이를 발견했어요!',
+    description: data?.message || '처음 만난 고양이로 도감에 등록됐어요.',
+  })
+  const saveCopy = document.querySelector('.capture-save-copy')
+  if (saveCopy) {
+    const title = saveCopy.querySelector('h2')
+    const description = saveCopy.querySelector('p')
+    if (title) title.textContent = '이 고양이 이름을 지어주세요'
+    if (description) description.textContent = '도감에 등록됐어요. 아래에서 이름을 지어주세요.'
+  }
+  // 이전 촬영에서 남은 입력/메시지를 초기화한다.
+  const nameInput = document.querySelector('#new-cat-name-input')
+  const nameMessage = document.querySelector('#new-cat-name-message')
+  if (nameInput) nameInput.value = ''
+  if (nameMessage) {
+    nameMessage.textContent = ''
+    nameMessage.hidden = true
+  }
+  window.showCaptureResult?.('new', imageUrl || capturePhotoUrl(data))
+}
+
+function renderFailureCapture(data, imageUrl) {
+  const isLowQuality = data?.detectionStatus === 'low_quality'
+  setCaptureCopy('failure', {
+    title: isLowQuality ? '사진을 다시 찍어주세요' : '고양이를 감지하지 못했어요',
+    description: data?.message || (isLowQuality ? '고양이는 보이지만 사진이 흐리거나 너무 작아요.' : '고양이가 화면 안에 잘 보이도록 다시 찍어주세요.'),
+  })
+  window.showCaptureResult?.('failure', imageUrl)
+}
+
+function renderCandidateOption(candidate) {
+  const label = document.createElement('label')
+  label.className = 'capture-candidate-item'
+
+  const avatar = document.createElement('span')
+  avatar.className = 'capture-candidate-avatar'
+  avatar.setAttribute('aria-hidden', 'true')
+  avatar.textContent = '🐱'
+
+  const info = document.createElement('span')
+  info.className = 'capture-candidate-info'
+  const name = document.createElement('strong')
+  name.textContent = candidate.name || `고양이 #${candidate.catId}`
+  const meta = document.createElement('span')
+  const score = formatPercent(candidate.finalScore)
+  meta.textContent = [candidate.distanceMeters ? `📍 ${Math.round(candidate.distanceMeters)}m 근처` : null, score].filter(Boolean).join(' · ')
+  info.append(name, meta)
+
+  const input = document.createElement('input')
+  input.type = 'radio'
+  input.name = 'cat-candidate'
+  input.value = candidate.catId
+  input.dataset.catId = candidate.catId
+
+  const radio = document.createElement('span')
+  radio.className = 'capture-candidate-radio'
+  radio.setAttribute('aria-hidden', 'true')
+  label.append(avatar, info, input, radio)
+  return label
+}
+
+function renderNewCatOption(labelText = '처음 보는 고양이 같아요') {
+  const label = document.createElement('label')
+  label.className = 'capture-candidate-item capture-candidate-item--muted'
+  label.innerHTML = `
+    <span class="capture-candidate-avatar capture-candidate-avatar--muted" aria-hidden="true">🐾</span>
+    <span class="capture-candidate-info">
+      <strong>${labelText}</strong>
+      <span>목록에 없으면 새 고양이로 기록해요</span>
+    </span>
+    <input type="radio" name="cat-candidate" value="new-cat" data-new-cat="true" />
+    <span class="capture-candidate-radio" aria-hidden="true"></span>
+  `
+  return label
+}
+
+function renderCandidatesCapture(data, imageUrl) {
+  pendingConfirmation = { photoId: data.photoId, imageUrl, photo: pendingCapturedPhoto }
+  setCaptureCopy('candidates', {
+    title: '어떤 고양이인가요?',
+    description: data?.message || '비슷한 고양이가 여러 마리 보여요. 가장 가까운 고양이를 골라주세요.',
+  })
+
+  captureCandidateForm?.replaceChildren(
+    ...(data?.candidates ?? []).map(renderCandidateOption),
+    renderNewCatOption(data?.newCatOption?.label)
+  )
+  window.showCaptureResult?.('candidates', imageUrl)
+}
+
+function renderCaptureResponse(data, imageUrl) {
+  switch (data?.detectionStatus) {
+    case 'matched':
+      renderMatchedCapture(data, imageUrl)
+      break
+    case 'new_cat_candidate':
+      renderNewCatCapture(data, imageUrl)
+      break
+    case 'needs_user_confirmation':
+      renderCandidatesCapture(data, imageUrl)
+      break
+    case 'low_quality':
+    case 'rejected':
+    default:
+      renderFailureCapture(data, imageUrl)
+      break
+  }
+}
+
+async function uploadSighting(file, position) {
+  const formData = new FormData()
+  formData.set('image', file)
+  formData.set('longitude', String(position[0]))
+  formData.set('latitude', String(position[1]))
+
+  const response = await authFetch('/api/sightings', {
+    method: 'POST',
+    body: formData,
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data.message ?? '사진을 제출하지 못했습니다.')
+  return data
+}
+
+async function confirmSightingCandidate(selected) {
+  if (!pendingConfirmation?.photoId) throw new Error('확인할 사진 정보가 없습니다.')
+  const body = selected?.dataset?.newCat === 'true'
+    ? { selectedCatId: null, isNewCatCandidate: true }
+    : { selectedCatId: Number(selected.dataset.catId || selected.value) }
+
+  const response = await authFetch(`/api/sightings/${pendingConfirmation.photoId}/confirm-cat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await response.json()
+  if (!response.ok) throw new Error(data.message ?? '고양이를 확정하지 못했습니다.')
+  return data
+}
+
+async function keepSuccessfulPhoto(photo) {
+  if (!photo) return
+  catPhotos.unshift(photo)
+  addPhotoMarker(photo)
+  renderGallery()
+
+  try {
+    await storePhoto(photo)
+  } catch (error) {
+    console.warn('고양이 사진을 브라우저에 저장하지 못했습니다.', error)
+  }
+}
+
 async function restorePhotos() {
   try {
     const storedPhotos = await readStoredPhotos()
@@ -1121,30 +1355,65 @@ async function processCapturedFile(file) {
       console.warn('사진 압축에 실패해 원본을 저장합니다.', compressionError)
       dataUrl = await originalFileToDataUrl(file)
     }
+    const position = stablePhotoPosition()
     const photo = {
       id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
       dataUrl,
-      position: stablePhotoPosition(),
+      position,
       accuracy: normalizedGpsAccuracy(userPosAccuracy),
       createdAt: new Date().toISOString(),
     }
 
-    catPhotos.unshift(photo)
-    addPhotoMarker(photo)
-    renderGallery()
-    returnToMap()
+    pendingCapturedPhoto = photo
+    const result = await uploadSighting(file, position)
+    renderCaptureResponse(result, dataUrl)
 
-    try {
-      await storePhoto(photo)
-    } catch (error) {
-      console.warn('고양이 사진을 브라우저에 저장하지 못했습니다.', error)
+    if (['matched', 'new_cat_candidate'].includes(result?.detectionStatus)) {
+      await keepSuccessfulPhoto(photo)
+      pendingCapturedPhoto = null
     }
   } catch (error) {
     console.warn('사진 처리에 실패했습니다.', error)
+    renderFailureCapture({
+      detectionStatus: 'rejected',
+      message: error?.message ?? '사진을 제출하지 못했습니다. 잠시 후 다시 시도해주세요.',
+    })
   } finally {
     cameraInput.value = '' // 연속 촬영과 같은 사진 재선택을 허용
   }
 }
+
+captureCandidateForm?.addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const selected = captureCandidateForm.querySelector('input[name="cat-candidate"]:checked')
+  if (!selected) {
+    setCaptureCopy('candidates', {
+      description: '후보 중 하나를 골라주세요.',
+    })
+    return
+  }
+
+  captureConfirmButton.disabled = true
+  captureConfirmButton.textContent = '확인 중...'
+
+  try {
+    const result = await confirmSightingCandidate(selected)
+    renderCaptureResponse(result, pendingConfirmation?.imageUrl)
+    if (['matched', 'new_cat_candidate'].includes(result?.detectionStatus)) {
+      await keepSuccessfulPhoto(pendingConfirmation?.photo)
+      pendingConfirmation = null
+      pendingCapturedPhoto = null
+    }
+  } catch (error) {
+    console.warn('고양이 후보 확정에 실패했습니다.', error)
+    setCaptureCopy('candidates', {
+      description: error?.message ?? '고양이를 확정하지 못했습니다. 다시 시도해주세요.',
+    })
+  } finally {
+    captureConfirmButton.disabled = false
+    captureConfirmButton.textContent = '선택 완료 🐾'
+  }
+})
 
 cameraInput.addEventListener('change', () => {
   processCapturedFile(cameraInput.files?.[0])
@@ -1161,9 +1430,43 @@ function closePhoto() {
 }
 
 photoClose.addEventListener('click', closePhoto)
+// 4-1 GET /gallery/me: 서버에 저장된 내 사진으로 갤러리를 채운다.
+async function loadServerGallery() {
+  try {
+    const data = await getGallery({ limit: 100 })
+    const photos = data.photos ?? []
+    const cards = photos.map((photo) => {
+      const url = resolveAssetUrl(photo.imageUrl)
+      const card = document.createElement('button')
+      card.className = 'gallery-card'
+      card.type = 'button'
+      card.setAttribute(
+        'aria-label',
+        photo.catName ? `${photo.catName} · ${photoDateLabel(photo.takenAt)}` : photoDateLabel(photo.takenAt)
+      )
+      const image = document.createElement('img')
+      image.src = url
+      image.alt = photo.catName || '촬영한 고양이'
+      image.loading = 'lazy'
+      const time = document.createElement('time')
+      time.dateTime = photo.takenAt
+      time.textContent = photoDateLabel(photo.takenAt)
+      card.append(image, time)
+      card.addEventListener('click', () => showPhoto(url))
+      return card
+    })
+    galleryGrid.replaceChildren(...cards)
+    galleryEmpty.hidden = photos.length > 0
+  } catch (error) {
+    // 실패하면 renderGallery()가 이미 그려둔 로컬 사진을 그대로 둔다.
+    console.warn('갤러리를 불러오지 못했습니다.', error)
+  }
+}
+
 catGalleryBtn.addEventListener('click', () => {
-  renderGallery()
+  renderGallery() // 로컬 사진을 먼저 즉시 표시(빠름)
   catGallery.hidden = false
+  loadServerGallery() // 서버 사진으로 교체(4-1)
 })
 galleryClose.addEventListener('click', () => {
   catGallery.hidden = true
@@ -1176,6 +1479,567 @@ locationPhotosClose.addEventListener('click', () => {
 })
 
 const photoRestorePromise = restorePhotos()
+
+const settingsScreen = document.querySelector('#settings-screen')
+const settingsNameForm = document.querySelector('#settings-name-form')
+const settingsNameInput = document.querySelector('#settings-name-input')
+const settingsImageInput = document.querySelector('#settings-image-input')
+const settingsMessage = document.querySelector('#settings-message')
+
+function showSettingsMessage(message = '', isError = false) {
+  if (!settingsMessage) return
+  settingsMessage.textContent = message
+  settingsMessage.hidden = !message
+  settingsMessage.classList.toggle('is-error', isError)
+}
+
+function currentDisplayName() {
+  const user = getStoredUser()
+  return user?.nickname || user?.username || '캣집사'
+}
+
+function updateDisplayedName(name) {
+  const safeName = name || '캣집사'
+  const profileName = document.querySelector('#profile-dex-name')
+  if (profileName) {
+    profileName.textContent = safeName
+    const paw = document.createElement('span')
+    paw.setAttribute('aria-hidden', 'true')
+    paw.textContent = ' 🐾'
+    profileName.append(paw)
+  }
+
+  const greeting = document.querySelector('.cat-menu-greeting p')
+  if (greeting) {
+    greeting.replaceChildren(
+      document.createTextNode(`${safeName}님,`),
+      document.createElement('br'),
+      Object.assign(document.createElement('strong'), { textContent: '안녕하세요! ' })
+    )
+    const strong = greeting.querySelector('strong')
+    const paw = document.createElement('span')
+    paw.setAttribute('aria-hidden', 'true')
+    paw.textContent = '🐾'
+    strong?.append(paw)
+  }
+}
+
+function openSettingsScreen() {
+  if (!settingsScreen || !settingsNameInput) return
+  settingsNameInput.value = currentDisplayName()
+  if (settingsImageInput) settingsImageInput.value = getStoredUser()?.profileImageUrl || ''
+  showSettingsMessage()
+  settingsScreen.hidden = false
+  settingsNameInput.focus()
+}
+
+function closeSettingsScreen() {
+  if (!settingsScreen) return
+  settingsScreen.hidden = true
+  if (window.location.hash === '#settings') {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  }
+}
+
+window.showSettingsScreen = openSettingsScreen
+document.querySelectorAll('[data-open-settings]').forEach((button) => {
+  button.addEventListener('click', openSettingsScreen)
+})
+document.querySelectorAll('[data-settings-close]').forEach((button) => {
+  button.addEventListener('click', closeSettingsScreen)
+})
+
+// 도감(profile-dex)에 서버 컬렉션(GET /api/collection) 실데이터를 채운다.
+const dexGrid = document.querySelector('.profile-dex-grid')
+const dexProgress = document.querySelector('.profile-dex-progress')
+const dexFoundStat = document.querySelector('.profile-dex-stats .profile-dex-stat:first-child strong')
+const catDetailScreen = document.querySelector('#cat-detail')
+
+// 백엔드 pattern 값을 카드 배경 클래스에 대응시킨다. 없으면 기본 초록 배경.
+const DEX_PATTERN_CLASS = {
+  tabby: 'dex-card-photo--tabby',
+  brown_tabby: 'dex-card-photo--tabby',
+  calico: 'dex-card-photo--calico',
+  tricolor: 'dex-card-photo--calico',
+  black: 'dex-card-photo--black',
+}
+
+function resolveAssetUrl(url) {
+  if (!url) return null
+  return url.startsWith('/') ? `${API_BASE_URL}${url}` : url
+}
+
+function catEmoji(pattern) {
+  return pattern === 'black' ? '🐈‍⬛' : '🐈'
+}
+
+// catId(string) → 컬렉션 항목. 상세 화면에서 즐겨찾기/표시이름을 즉시 참조하려고 보관.
+const dexCollectionById = new Map()
+
+function buildDexCard(cat) {
+  const button = document.createElement('button')
+  button.className = 'dex-card'
+  button.type = 'button'
+  button.dataset.catId = cat.catId
+  button.dataset.openDetail = ''
+
+  const photo = document.createElement('span')
+  photo.className = 'dex-card-photo'
+  const patternClass = DEX_PATTERN_CLASS[cat.pattern]
+  if (patternClass) photo.classList.add(patternClass)
+
+  const imageUrl = resolveAssetUrl(cat.mainImageUrl)
+  if (imageUrl) {
+    const img = document.createElement('img')
+    img.src = imageUrl
+    img.alt = ''
+    img.loading = 'lazy'
+    photo.append(img)
+  } else {
+    const emoji = document.createElement('span')
+    emoji.setAttribute('aria-hidden', 'true')
+    emoji.textContent = cat.pattern === 'black' ? '🐈‍⬛' : '🐈'
+    photo.append(emoji)
+  }
+
+  const name = document.createElement('strong')
+  name.textContent = cat.displayName || `고양이 #${cat.catId}`
+
+  button.append(photo, name)
+  return button
+}
+
+function buildLockedDexCard() {
+  const card = document.createElement('div')
+  card.className = 'dex-card dex-card--locked'
+  card.setAttribute('aria-hidden', 'true')
+  const photo = document.createElement('span')
+  photo.className = 'dex-card-photo'
+  photo.append(Object.assign(document.createElement('span'), { textContent: '🐈' }))
+  card.append(photo, Object.assign(document.createElement('strong'), { textContent: '???' }))
+  return card
+}
+
+// 컬렉션(내 발견분)만으로 그리는 폴백 렌더. GET /cats가 실패했을 때 사용.
+function renderDexCollection(cats) {
+  if (!dexGrid) return
+  const found = cats.length
+  if (dexFoundStat) dexFoundStat.textContent = String(found)
+  if (dexProgress) dexProgress.textContent = `${found}마리 발견`
+
+  const cards = cats.map(buildDexCard)
+  // 도감이 휑해 보이지 않도록 최소 6칸까지 잠긴 카드로 채운다.
+  for (let i = cards.length; i < 6; i += 1) cards.push(buildLockedDexCard())
+  dexGrid.replaceChildren(...cards)
+}
+
+// 1-1 GET /cats: 전체 도감(발견 + 미발견 ???)을 그린다.
+// 발견한 고양이는 컬렉션의 개인 별명/즐겨찾기 정보로 보강한다.
+function renderDexFromCats(cats) {
+  if (!dexGrid) return
+  const discovered = cats.filter((cat) => cat.isDiscovered)
+  if (dexFoundStat) dexFoundStat.textContent = String(discovered.length)
+  if (dexProgress) dexProgress.textContent = `${discovered.length} / ${cats.length}`
+
+  const cards = cats.map((cat) => {
+    if (!cat.isDiscovered) return buildLockedDexCard()
+    const mine = dexCollectionById.get(String(cat.id))
+    return buildDexCard({
+      catId: cat.id,
+      displayName: mine?.displayName || cat.name,
+      mainImageUrl: cat.mainImageUrl,
+      pattern: cat.pattern,
+    })
+  })
+  dexGrid.replaceChildren(...cards)
+}
+
+let dexLoading = false
+async function loadDexCollection() {
+  if (!dexGrid || dexLoading) return
+  dexLoading = true
+  try {
+    // 전체 목록(1-1)과 내 컬렉션(3-1)을 함께 불러온다.
+    // 컬렉션은 상세 화면의 즐겨찾기/별명 참조(dexCollectionById)에도 쓰인다.
+    const [catsData, collectionData] = await Promise.all([
+      getCats().catch(() => null),
+      getCollection().catch(() => ({ cats: [] })),
+    ])
+    dexCollectionById.clear()
+    ;(collectionData.cats ?? []).forEach((cat) => dexCollectionById.set(String(cat.catId), cat))
+
+    if (catsData?.cats) {
+      renderDexFromCats(catsData.cats)
+    } else {
+      renderDexCollection(collectionData.cats ?? [])
+    }
+  } catch (error) {
+    console.warn('도감을 불러오지 못했습니다.', error)
+  } finally {
+    dexLoading = false
+  }
+}
+
+// ── 고양이 상세(cat-detail): GET /cats/:id + /cats/:id/sightings + 즐겨찾기(3-3) ──
+const catDetailFav = catDetailScreen?.querySelector('.cat-detail-fav')
+const catDetailPhoto = catDetailScreen?.querySelector('[data-detail-photo]')
+const catDetailName = catDetailScreen?.querySelector('#cat-detail-name')
+const catDetailPlace = catDetailScreen?.querySelector('.cat-detail-name-block p:first-of-type')
+const catDetailDate = catDetailScreen?.querySelector('.cat-detail-date')
+const catDetailRecord = catDetailScreen?.querySelector('.cat-detail-record p')
+const catDetailCount = catDetailScreen?.querySelector('.cat-detail-count')
+const nicknameBtn = catDetailScreen?.querySelector('[data-nickname-edit]')
+const nicknameForm = catDetailScreen?.querySelector('[data-nickname-form]')
+const nicknameInput = nicknameForm?.querySelector('input')
+let detailCatId = null
+
+function resetNicknameEditor() {
+  if (nicknameForm) nicknameForm.hidden = true
+  if (nicknameBtn) nicknameBtn.hidden = false
+}
+
+function setDetailName(name) {
+  if (!catDetailName) return
+  const paw = document.createElement('span')
+  paw.setAttribute('aria-hidden', 'true')
+  paw.textContent = '🐾'
+  catDetailName.replaceChildren(document.createTextNode(`${name} `), paw)
+}
+
+function setDetailFavorite(isFavorite) {
+  catDetailFav?.setAttribute('aria-pressed', isFavorite ? 'true' : 'false')
+}
+
+function fillDetailPhoto(imageUrl, pattern) {
+  if (!catDetailPhoto) return
+  const emoji = catDetailPhoto.querySelector('.capture-photo-cat')
+  const resolved = resolveAssetUrl(imageUrl)
+  if (resolved) {
+    catDetailPhoto.style.backgroundImage = `url("${resolved}")`
+    catDetailPhoto.classList.add('has-photo')
+  } else {
+    catDetailPhoto.style.backgroundImage = ''
+    catDetailPhoto.classList.remove('has-photo')
+    if (emoji) emoji.textContent = catEmoji(pattern)
+  }
+}
+
+async function openCatDetail(catId) {
+  if (!catDetailScreen) return
+  detailCatId = String(catId)
+  const item = dexCollectionById.get(String(catId))
+  // 컬렉션 정보로 이름/즐겨찾기를 먼저 채워 깜빡임을 줄인다.
+  setDetailName(item?.displayName || '???')
+  setDetailFavorite(Boolean(item?.isFavorite))
+  fillDetailPhoto(item?.mainImageUrl, item?.pattern)
+  resetNicknameEditor()
+  // 도감/즐겨찾기 화면 위에서 열려도 항상 최상단에 보이도록 한다.
+  catDetailScreen.style.zIndex = '30'
+  catDetailScreen.hidden = false
+
+  try {
+    const [cat, sightingsData] = await Promise.all([
+      getCat(catId),
+      getCatSightings(catId).catch(() => ({ sightings: [] })),
+    ])
+    setDetailName(item?.customName || cat.name || cat.displayName || '???')
+    fillDetailPhoto(cat.mainImageUrl, cat.pattern)
+    if (catDetailDate) catDetailDate.textContent = cat.discoveredAt ? `${photoDateLabel(cat.discoveredAt)} 발견` : ''
+    if (catDetailRecord) catDetailRecord.textContent = cat.description || cat.personality || '아직 기록이 없어요.'
+    if (catDetailPlace) catDetailPlace.textContent = cat.personality || ''
+
+    const sightings = sightingsData.sightings ?? []
+    if (catDetailCount && catDetailCount.lastChild) {
+      catDetailCount.lastChild.textContent = ` ${sightings.length}회 목격`
+    }
+  } catch (error) {
+    console.warn('고양이 상세를 불러오지 못했습니다.', error)
+  }
+}
+
+// 즐겨찾기 토글(낙관적 업데이트 + 실패 시 롤백)
+catDetailFav?.addEventListener('click', async () => {
+  if (detailCatId == null) return
+  const next = catDetailFav.getAttribute('aria-pressed') !== 'true'
+  setDetailFavorite(next)
+  try {
+    const result = await setFavorite(detailCatId, next)
+    const isFav = Boolean(result.isFavorite)
+    setDetailFavorite(isFav)
+    const item = dexCollectionById.get(detailCatId)
+    if (item) item.isFavorite = isFav
+  } catch (error) {
+    console.warn('즐겨찾기 변경에 실패했습니다.', error)
+    setDetailFavorite(!next)
+  }
+})
+
+// 새로 그린 카드도 클릭하면 해당 catId로 상세 화면이 열리도록 위임 리스너를 건다.
+dexGrid?.addEventListener('click', (event) => {
+  const card = event.target.closest('.dex-card')
+  if (!card || card.classList.contains('dex-card--locked')) return
+  const catId = card.dataset.catId
+  if (catId) openCatDetail(catId)
+})
+
+// ── 프로필 통계(5-1 GET /profile/me): 도감 상단 발견/사진 수 + 프로필 이미지 ──
+const dexStats = document.querySelectorAll('.profile-dex-stats .profile-dex-stat strong')
+const dexAvatar = document.querySelector('.profile-dex-avatar')
+
+async function loadProfileStats() {
+  try {
+    const me = await getProfile()
+    if (dexStats[0] && me.discoveredCount != null) dexStats[0].textContent = String(me.discoveredCount)
+    if (dexStats[1] && me.sightingCount != null) dexStats[1].textContent = String(me.sightingCount)
+    const avatarUrl = resolveAssetUrl(me.profileImageUrl)
+    if (avatarUrl && dexAvatar) {
+      const img = document.createElement('img')
+      img.src = avatarUrl
+      img.alt = ''
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit'
+      dexAvatar.replaceChildren(img)
+    }
+  } catch (error) {
+    console.warn('프로필을 불러오지 못했습니다.', error)
+  }
+}
+
+// 도감을 열 때마다 최신 컬렉션과 프로필 통계를 다시 불러온다.
+const baseShowProfileDex = window.showProfileDex
+window.showProfileDex = () => {
+  baseShowProfileDex?.()
+  loadDexCollection()
+  loadProfileStats()
+}
+
+// #profile 해시로 바로 진입한 경우에도 채운다.
+if (window.location.hash === '#profile') {
+  loadDexCollection()
+  loadProfileStats()
+}
+
+// ── 2-1 신규 고양이 이름짓기(PATCH /cats/:id/name) ──
+const newCatNameForm = document.querySelector('#new-cat-name-form')
+const newCatNameInput = document.querySelector('#new-cat-name-input')
+const newCatNameMessage = document.querySelector('#new-cat-name-message')
+
+function showNewCatNameMessage(message = '', isError = false) {
+  if (!newCatNameMessage) return
+  newCatNameMessage.textContent = message
+  newCatNameMessage.hidden = !message
+  newCatNameMessage.classList.toggle('is-error', isError)
+}
+
+newCatNameForm?.addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const name = newCatNameInput.value.trim()
+  if (!name) return showNewCatNameMessage('이름을 입력해주세요.', true)
+  if (pendingNewCatId == null) return showNewCatNameMessage('등록된 고양이를 찾을 수 없어요.', true)
+
+  const button = newCatNameForm.querySelector('[type="submit"]')
+  const original = button.textContent
+  button.disabled = true
+  button.textContent = '저장 중...'
+  showNewCatNameMessage()
+  try {
+    await setCatName(pendingNewCatId, name)
+    showNewCatNameMessage(`'${name}' 이름을 지어줬어요! 🐾`)
+    pendingNewCatId = null
+    setTimeout(() => {
+      const result = document.querySelector('#capture-result')
+      if (result) result.hidden = true
+    }, 900)
+  } catch (error) {
+    showNewCatNameMessage(error?.message ?? '이름을 저장하지 못했습니다.', true)
+  } finally {
+    button.disabled = false
+    button.textContent = original
+  }
+})
+
+// ── 2-2 도감 개인 별명(PATCH /cats/:id/nickname) ──
+nicknameBtn?.addEventListener('click', () => {
+  if (!nicknameForm) return
+  const item = dexCollectionById.get(detailCatId)
+  nicknameInput.value = item?.customName || ''
+  nicknameForm.hidden = false
+  nicknameBtn.hidden = true
+  nicknameInput.focus()
+})
+
+nicknameForm?.addEventListener('submit', async (event) => {
+  event.preventDefault()
+  if (detailCatId == null) return
+  const value = nicknameInput.value.trim()
+  const save = nicknameForm.querySelector('[type="submit"]')
+  save.disabled = true
+  try {
+    const result = await setCatNickname(detailCatId, value || null)
+    const item = dexCollectionById.get(detailCatId)
+    if (item) {
+      item.customName = result.customName ?? null
+      item.displayName = item.customName || item.name || '???'
+    }
+    setDetailName(item?.displayName || result.customName || '???')
+    resetNicknameEditor()
+    loadDexCollection() // 도감 카드 이름도 갱신
+  } catch (error) {
+    console.warn('별명을 저장하지 못했습니다.', error)
+  } finally {
+    save.disabled = false
+  }
+})
+
+// ── 3-3 즐겨찾기 목록 화면(GET /collection에서 isFavorite 필터) ──
+const favoritesScreen = document.querySelector('#favorites-screen')
+const favoritesGrid = document.querySelector('#favorites-grid')
+const favoritesCount = document.querySelector('#favorites-count')
+const favoritesEmpty = document.querySelector('#favorites-empty')
+
+async function openFavorites() {
+  if (!favoritesScreen) return
+  favoritesScreen.hidden = false
+  try {
+    const data = await getCollection()
+    const favs = (data.cats ?? []).filter((cat) => cat.isFavorite)
+    favs.forEach((cat) => dexCollectionById.set(String(cat.catId), cat))
+    favoritesGrid?.replaceChildren(...favs.map(buildDexCard))
+    if (favoritesCount) favoritesCount.textContent = `${favs.length}마리`
+    if (favoritesEmpty) favoritesEmpty.hidden = favs.length > 0
+  } catch (error) {
+    console.warn('즐겨찾기를 불러오지 못했습니다.', error)
+  }
+}
+
+favoritesGrid?.addEventListener('click', (event) => {
+  const card = event.target.closest('.dex-card')
+  if (!card || card.classList.contains('dex-card--locked')) return
+  if (card.dataset.catId) openCatDetail(card.dataset.catId)
+})
+
+document.querySelectorAll('[data-open-favorites]').forEach((button) => {
+  button.addEventListener('click', openFavorites)
+})
+document.querySelectorAll('[data-favorites-close]').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (favoritesScreen) favoritesScreen.hidden = true
+  })
+})
+
+// ── 6-3 내 활동 기록 화면(GET /sightings/me) ──
+const activityScreen = document.querySelector('#activity-screen')
+const activityList = document.querySelector('#activity-list')
+const activityCount = document.querySelector('#activity-count')
+const activityEmpty = document.querySelector('#activity-empty')
+const DETECTION_LABEL = { matched: '다시 만남', new_cat_candidate: '새 친구' }
+
+function buildActivityItem(sighting) {
+  const row = document.createElement('div')
+  row.className = 'activity-item'
+
+  const thumb = document.createElement('span')
+  thumb.className = 'activity-item-thumb'
+  const url = resolveAssetUrl(sighting.imageUrl)
+  if (url) {
+    const img = document.createElement('img')
+    img.src = url
+    img.alt = ''
+    img.loading = 'lazy'
+    thumb.append(img)
+  } else {
+    thumb.textContent = '🐈'
+  }
+
+  const info = document.createElement('div')
+  info.className = 'activity-item-info'
+  info.append(
+    Object.assign(document.createElement('strong'), { textContent: sighting.catName || '이름 없는 고양이' }),
+    Object.assign(document.createElement('span'), { textContent: photoDateLabel(sighting.createdAt) })
+  )
+
+  const badge = document.createElement('span')
+  badge.className = 'activity-item-badge'
+  if (sighting.detectionStatus === 'new_cat_candidate') badge.classList.add('activity-item-badge--new')
+  badge.textContent = DETECTION_LABEL[sighting.detectionStatus] || '기록'
+
+  row.append(thumb, info, badge)
+  return row
+}
+
+async function openActivity() {
+  if (!activityScreen) return
+  activityScreen.hidden = false
+  try {
+    const data = await getMySightings()
+    const list = data.sightings ?? []
+    activityList?.replaceChildren(...list.map(buildActivityItem))
+    if (activityCount) activityCount.textContent = `${list.length}건`
+    if (activityEmpty) activityEmpty.hidden = list.length > 0
+  } catch (error) {
+    console.warn('활동 기록을 불러오지 못했습니다.', error)
+  }
+}
+
+document.querySelectorAll('[data-open-activity]').forEach((button) => {
+  button.addEventListener('click', openActivity)
+})
+document.querySelectorAll('[data-activity-close]').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (activityScreen) activityScreen.hidden = true
+  })
+})
+
+settingsNameForm?.addEventListener('submit', async (event) => {
+  event.preventDefault()
+  if (!settingsNameForm.reportValidity()) return
+
+  const button = settingsNameForm.querySelector('[type="submit"]')
+  const nickname = settingsNameInput.value.trim()
+  const imageValue = settingsImageInput?.value.trim()
+  button.disabled = true
+  button.textContent = '저장 중...'
+  showSettingsMessage()
+
+  try {
+    // 5-2: 닉네임 + 프로필 사진 URL을 함께 저장(사진칸을 비우면 null로 제거).
+    const payload = { nickname }
+    if (settingsImageInput) payload.profileImageUrl = imageValue || null
+    const data = await updateProfile(payload)
+
+    updateStoredUser({ ...getStoredUser(), ...data })
+    updateDisplayedName(data.nickname ?? nickname)
+    showSettingsMessage('저장됐어요.')
+  } catch (error) {
+    showSettingsMessage(error?.message ?? '저장하지 못했습니다.', true)
+  } finally {
+    button.disabled = false
+    button.textContent = '저장하기'
+  }
+})
+
+updateDisplayedName(currentDisplayName())
+if (window.location.hash === '#settings') {
+  document.querySelector('#welcome').hidden = true
+  document.querySelector('#signup').hidden = true
+  openSettingsScreen()
+}
+
+// 7-1 세션 재검증: 저장된 토큰이 아직 유효한지 부팅 시 한 번 확인한다.
+// 401이면 만료된 것이니 로그아웃 후 새로고침(→ 로그인 화면). 네트워크 오류(서버 다운)는
+// status가 없으므로 무시하고 기존 세션을 유지한다.
+if (hasSession()) {
+  getMe()
+    .then((me) => {
+      updateStoredUser({ ...getStoredUser(), ...me })
+      updateDisplayedName(me.nickname || me.username)
+    })
+    .catch(async (error) => {
+      if (error.status === 401) {
+        await logout()
+        window.location.reload()
+      }
+    })
+}
 
 // 안내 문구는 5초 후 사라짐
 setTimeout(() => {
