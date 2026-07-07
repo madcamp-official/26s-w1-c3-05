@@ -87,6 +87,9 @@ export const openApiDocument = {
             type: 'object',
             properties: {
               personality: { type: 'string', nullable: true, example: '사람을 잘 따름' },
+              modelKey: { type: 'string', nullable: true, example: 'orange' },
+              modelUrl: { type: 'string', nullable: true, example: '/models/cats/orange.glb' },
+              modelScale: { type: 'number', nullable: true },
               discoveredAt: { type: 'string', nullable: true, format: 'date-time' },
               displayName: { type: 'string', nullable: true, example: '???' },
             },

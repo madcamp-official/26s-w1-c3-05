@@ -37,6 +37,8 @@ export const catListItem = (cat: CatRow, isDiscovered: boolean) => ({
 
 export const catDetail = (cat: CatRow, collection?: UserCatCollectionRow) => {
   const isDiscovered = Boolean(collection)
+  const modelKey = resolveModelKey({ model_key: cat.model_key, pattern: cat.pattern })
+  const asset = modelAsset(modelKey)
   return {
     id: String(cat.id),
     name: isDiscovered ? cat.name : null,
@@ -45,6 +47,9 @@ export const catDetail = (cat: CatRow, collection?: UserCatCollectionRow) => {
     personality: isDiscovered ? cat.personality : null,
     description: isDiscovered ? cat.description : null,
     isDiscovered,
+    modelKey: isDiscovered ? modelKey : null,
+    modelUrl: isDiscovered ? asset.assetUrl : null,
+    modelScale: isDiscovered ? asset.scale : null,
     ...(isDiscovered
       ? { discoveredAt: collection?.first_discovered_at }
       : { displayName: '???' }),
