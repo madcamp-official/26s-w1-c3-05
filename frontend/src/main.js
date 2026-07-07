@@ -361,6 +361,7 @@ async function initMapActors() {
   ])
 
   objects.forEach(addMockBuildingMarker)
+  animatedModelLayer.setBuildingActors(objects)
   syncCatMarkers(cats)
   animatedModelLayer.setCatActors(cats)
   animatedModelLayer.setAvatarPosition([DEFAULT_QUERY_POSITION.lng, DEFAULT_QUERY_POSITION.lat])

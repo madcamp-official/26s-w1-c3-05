@@ -11,6 +11,7 @@ const { Pool, types } = pg
 // safely in a JS number, so parse them as numbers to match our TS types (which all
 // declare `number`) and avoid string-vs-number comparison bugs (e.g. cat_id === selectedCatId).
 types.setTypeParser(20, (value) => (value === null ? null : Number(value)))
+types.setTypeParser(1700, (value) => (value === null ? null : Number(value)))
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL ?? 'postgres://myocatmongo:myocatmongo@localhost:5432/myocatmongo',
