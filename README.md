@@ -86,8 +86,7 @@
 ---
 
 ## 배포 결과물
-- **서비스 URL: https://catchme-rosy.vercel.app/ **
----
+- **https://catchme-rosy.vercel.app/**
 
 ## 회고 문서
 
