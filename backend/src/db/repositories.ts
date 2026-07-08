@@ -270,9 +270,13 @@ export const updateCat = async (catId: number, input: Partial<CatRow>) => {
 
 export const findCollection = (userId: number) =>
   many<UserCatCollectionRow & CatRow>(
-    `SELECT uc.*, c.name, c.pattern, c.representative_photo_url, c.description, c.personality
+    `SELECT uc.*, c.name, c.pattern, c.representative_photo_url, c.description, c.personality,
+      p.latitude AS discovery_latitude, p.longitude AS discovery_longitude,
+      z.id AS discovery_zone_id, z.name AS discovery_zone_name
      FROM user_cat_collections uc
      JOIN cats c ON c.id = uc.cat_id
+     LEFT JOIN cat_photos p ON p.id = uc.discovery_photo_id
+     LEFT JOIN campus_zones z ON z.id = p.zone_id
      WHERE uc.user_id = $1
      ORDER BY uc.first_discovered_at DESC`,
     [userId],

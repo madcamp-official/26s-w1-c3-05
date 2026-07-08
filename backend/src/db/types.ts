@@ -156,6 +156,10 @@ export interface UserCatCollectionRow {
   is_favorite: number
   custom_name: string | null
   created_at: string
+  discovery_latitude?: number | null
+  discovery_longitude?: number | null
+  discovery_zone_id?: number | null
+  discovery_zone_name?: string | null
 }
 
 export interface CatIdentificationCandidateRow {

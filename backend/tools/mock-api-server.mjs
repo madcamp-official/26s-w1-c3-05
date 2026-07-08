@@ -177,6 +177,12 @@ const collectionCat = (cat) => ({
   pattern: cat.pattern,
   discoveredAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
   isFavorite: cat.isFavorite,
+  discoveryLocation: {
+    latitude: DEFAULT_LAT + cat.latOffset,
+    longitude: DEFAULT_LNG + cat.lngOffset,
+    zoneId: null,
+    zoneName: cat.zoneName,
+  },
 })
 
 const catActor = (cat, origin) => ({

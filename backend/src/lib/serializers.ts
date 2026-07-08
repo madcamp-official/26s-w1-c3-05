@@ -65,6 +65,14 @@ export const collectionCat = (row: UserCatCollectionRow & Partial<CatRow>) => ({
   pattern: row.pattern ?? null,
   discoveredAt: row.first_discovered_at,
   isFavorite: Boolean(row.is_favorite),
+  discoveryLocation: row.discovery_latitude == null || row.discovery_longitude == null
+    ? null
+    : {
+        latitude: row.discovery_latitude,
+        longitude: row.discovery_longitude,
+        zoneId: row.discovery_zone_id == null ? null : String(row.discovery_zone_id),
+        zoneName: row.discovery_zone_name ?? null,
+      },
 })
 
 export const galleryPhoto = (photo: GalleryPhotoRow) => ({
