@@ -757,6 +757,34 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       this.frozen = Boolean(isTransitioning)
     },
 
+    setWalking(isWalking) {
+      if (!this.mixer || !animations?.length) return
+      
+      const walkClip = animations.find((c) => /walk/i.test(c.name))
+      const idleClip = animations.find((c) => /idle/i.test(c.name)) ?? animations[0]
+      
+      const targetClip = isWalking ? walkClip : idleClip
+      if (!targetClip) return
+      
+      const action = this.mixer.clipAction(targetClip)
+      if (this.activeAction === action) return
+      
+      action.reset()
+      action.loop = THREE.LoopRepeat
+      action.clampWhenFinished = false
+      
+      const prevAction = this.activeAction
+      if (prevAction && prevAction !== action) {
+        prevAction.fadeOut(0.25)
+      }
+      
+      action.fadeIn(0.25).play()
+      this.activeAction = action
+      
+      this.applyExpression(ANIMATION_EXPRESSION_MAP[targetClip.name.toLowerCase()] ?? 'neutral')
+      this.map?.triggerRepaint?.()
+    },
+
     setPosition(position) {
       this.position = position
       if (this.scene) {
@@ -1008,8 +1036,29 @@ export function createAnimatedModelLayer(map) {
     pendingBuildingActors: [],
     ready: false,
     isFollowing: false,
+    walkTimeout: null,
 
     setAvatarPosition(position) {
+      if (!position) return
+
+      if (this.avatarPosition) {
+        const dist = distanceMeters(this.avatarPosition, position)
+        // 0.3m 이상의 유의미한 움직임이 있을 때 걷기 애니메이션 재생
+        if (dist > 0.3) {
+          this.avatarWorldLayer?.setWalking(true)
+
+          if (this.walkTimeout) {
+            clearTimeout(this.walkTimeout)
+          }
+
+          // 2.5초 동안 추가 위치 갱신(움직임)이 없으면 다시 서는(idle) 애니메이션으로 복귀
+          this.walkTimeout = setTimeout(() => {
+            this.avatarWorldLayer?.setWalking(false)
+            this.walkTimeout = null
+          }, 2500)
+        }
+      }
+
       this.avatarPosition = [...position]
       this.ensureAvatarWorldLayer()
       if (this.avatarWorldLayer) this.avatarWorldLayer.setPosition(position)
