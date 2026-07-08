@@ -20,9 +20,9 @@ await run(`
 
 const passwordHash = await bcrypt.hash('12345678', 10)
 
-await run("INSERT INTO users (id, username, password_hash, nickname, role) VALUES (1, 'catlover123', $1, '고양이수집가', 'user')", [passwordHash])
-await run("INSERT INTO users (id, username, password_hash, nickname, role) VALUES (2, 'admin', $1, '관리자', 'admin')", [passwordHash])
-await run("INSERT INTO users (id, username, password_hash, nickname, role) VALUES (3, 'campuscat', $1, '캠퍼스냥냥이', 'user')", [passwordHash])
+await run("INSERT INTO users (id, username, password_hash, nickname, role) VALUES (1, 'catlover123@example.com', $1, '고양이수집가', 'user')", [passwordHash])
+await run("INSERT INTO users (id, username, password_hash, nickname, role) VALUES (2, 'admin@example.com', $1, '관리자', 'admin')", [passwordHash])
+await run("INSERT INTO users (id, username, password_hash, nickname, role) VALUES (3, 'campuscat@example.com', $1, '캠퍼스냥냥이', 'user')", [passwordHash])
 
 // type은 캣타워 3D 모델 색상 키(blue/green/pink/purple/yellow/gray_wood)로 지정한다 —
 // resolveBuildingModelKey()가 이 값으로 실제 에셋을 찾는다 (lib/buildingModels.ts 참고).

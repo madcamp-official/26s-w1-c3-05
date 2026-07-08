@@ -6,18 +6,18 @@ DECLARE
   v_photo_id BIGINT;
 BEGIN
   -- 1. admin 계정 확인 및 생성 (없으면 생성, 비밀번호: 12345678)
-  SELECT id INTO v_admin_id FROM users WHERE username = 'admin' LIMIT 1;
+  SELECT id INTO v_admin_id FROM users WHERE username = 'admin@example.com' LIMIT 1;
   IF v_admin_id IS NULL THEN
     INSERT INTO users (username, password_hash, nickname, role)
-    VALUES ('admin', '$2b$10$TGOnpKrBye2hNI3WXUq78eCjnfp336wVu8o7Dj3hGKgYCBsi74agO', '관리자', 'admin')
+    VALUES ('admin@example.com', '$2b$10$TGOnpKrBye2hNI3WXUq78eCjnfp336wVu8o7Dj3hGKgYCBsi74agO', '관리자', 'admin')
     RETURNING id INTO v_admin_id;
   END IF;
 
   -- 2. catlover123 계정 확인 및 생성 (없으면 생성, 비밀번호: 12345678)
-  SELECT id INTO v_user_id FROM users WHERE username = 'catlover123' LIMIT 1;
+  SELECT id INTO v_user_id FROM users WHERE username = 'catlover123@example.com' LIMIT 1;
   IF v_user_id IS NULL THEN
     INSERT INTO users (username, password_hash, nickname, role)
-    VALUES ('catlover123', '$2b$10$TGOnpKrBye2hNI3WXUq78eCjnfp336wVu8o7Dj3hGKgYCBsi74agO', '고양이수집가', 'user')
+    VALUES ('catlover123@example.com', '$2b$10$TGOnpKrBye2hNI3WXUq78eCjnfp336wVu8o7Dj3hGKgYCBsi74agO', '고양이수집가', 'user')
     RETURNING id INTO v_user_id;
   END IF;
 
