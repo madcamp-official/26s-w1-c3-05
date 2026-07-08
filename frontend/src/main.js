@@ -1589,6 +1589,45 @@ async function restorePhotos() {
   }
 }
 
+async function syncServerPhotos() {
+  if (!hasSession()) return
+  try {
+    const data = await getMySightings()
+    const list = data.sightings ?? []
+
+    const serverPhotos = list.map((s) => ({
+      id: `server-${s.id}`,
+      dataUrl: s.imageUrl,
+      position: [Number(s.longitude), Number(s.latitude)],
+      accuracy: 10,
+      createdAt: s.createdAt,
+      catId: s.catId ? Number(s.catId) : null,
+    }))
+
+    clearRenderedPhotoMarkers()
+
+    const storedPhotos = await readStoredPhotos()
+    const localPhotos = storedPhotos
+      .filter((photo) => Array.isArray(photo.position) && photo.dataUrl)
+
+    const combinedPhotos = [...localPhotos]
+    serverPhotos.forEach((sp) => {
+      const exists = localPhotos.some(
+        (lp) => lp.id === sp.id || (lp.catId === sp.catId && distanceInMeters(lp.position, sp.position) < 2)
+      )
+      if (!exists) {
+        combinedPhotos.push(sp)
+      }
+    })
+
+    catPhotos = combinedPhotos.sort(newestPhotoFirst)
+    catPhotos.forEach((photo) => addPhotoMarker(photo, false))
+    renderGallery()
+  } catch (error) {
+    console.warn('서버에서 목격담 정보를 가져와 동기화하지 못했습니다.', error)
+  }
+}
+
 // 게스트 로그인은 항상 새 계정(랜덤 id)을 만들기 때문에, 로그인 시점에 로컬에 남아있는
 // 사진은 100% 이전 세션의 것이다. 로그아웃 경로(버튼 클릭, 401로 인한 자동 로그아웃,
 // 로그아웃 없이 탭을 닫고 다시 게스트로 들어오는 경우 등)를 전부 잡아내려 하는 대신,
@@ -3214,6 +3253,7 @@ updateDisplayedName(currentDisplayName())
 window.addEventListener('catchme:enter-service', () => {
   updateDisplayedName(currentDisplayName())
   updateDisplayedAvatar(getStoredUser()?.profileImageUrl ?? null)
+  syncServerPhotos()
 })
 
 if (window.location.hash === '#settings') {
