@@ -534,17 +534,22 @@ async function initMapActors() {
   if (mapActorsInitialized || !hasSession()) return
   mapActorsInitialized = true
 
-  const origin = markerLngLat()
-  const [{ objects }, { cats }] = await Promise.all([
-    fetchMapObjects(origin),
-    fetchCatActors(origin),
-  ])
+  try {
+    const origin = markerLngLat()
+    const [{ objects }, { cats }] = await Promise.all([
+      fetchMapObjects(origin),
+      fetchCatActors(origin),
+    ])
 
-  objects.forEach(addMockBuildingMarker)
-  animatedModelLayer.setBuildingActors(objects)
-  animatedModelLayer.setCatActors(cats)
-  syncCatActorMarkers(cats)
-  animatedModelLayer.setAvatarPosition(origin)
+    objects.forEach(addMockBuildingMarker)
+    animatedModelLayer.setBuildingActors(objects)
+    animatedModelLayer.setCatActors(cats)
+    syncCatActorMarkers(cats)
+    animatedModelLayer.setAvatarPosition(origin)
+  } catch (error) {
+    mapActorsInitialized = false // 재시도할 수 있게 되돌린다.
+    throw error
+  }
 }
 
 function clearMockBuildingMarkers() {
@@ -573,31 +578,35 @@ async function refetchMapActorsForGps(origin) {
   }
 }
 
-// initMapActors를 부르는 트리거는 'idle'과 enter-service 둘뿐이고 둘 다 부팅 직후에만
-// 발생한다. 그때 백엔드가 아직 안 떴거나 네트워크가 잠깐 끊기면 고양이도 건물도
-// 하나도 안 뜬 채로 세션이 끝나므로, 실패하면 지수 백오프로 몇 번 더 시도한다.
-const MAP_ACTORS_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000]
-let mapActorsRetryPending = false
+// 부팅 직후에 딱 한 번만 실행되는 초기 로딩들(지도 액터, 서버 사진 동기화)은 그때
+// 백엔드가 아직 안 떴거나 네트워크가 잠깐 끊기면 그대로 실패한 채 세션이 끝난다.
+// 다시 부를 트리거가 없으므로 실패하면 지수 백오프로 몇 번 더 시도한다.
+const BOOT_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000]
 
-function tryInitMapActors(attempt = 0) {
-  initMapActors().catch((error) => {
-    mapActorsInitialized = false
-    console.warn(`map actors failed to initialize (attempt ${attempt + 1}):`, error)
+function withBootRetry(label, run) {
+  // 여러 트리거가 같은 작업을 부르다 모두 실패해도 재시도 체인이 갈라지지 않게
+  // 한 번에 하나만 예약한다. 이벤트 리스너로 넘겨도 되도록 인자는 받지 않는다.
+  let retryPending = false
+  const attempt = (index = 0) => {
+    run().catch((error) => {
+      console.warn(`${label} 실패 (${index + 1}번째 시도):`, error)
 
-    const delay = MAP_ACTORS_RETRY_DELAYS_MS[attempt]
-    // 두 트리거가 모두 실패해 재시도 체인이 둘로 갈라지지 않게 한 번에 하나만 예약한다.
-    if (delay == null || mapActorsRetryPending) return
-    mapActorsRetryPending = true
-    setTimeout(() => {
-      mapActorsRetryPending = false
-      tryInitMapActors(attempt + 1)
-    }, delay)
-  })
+      const delay = BOOT_RETRY_DELAYS_MS[index]
+      if (delay == null || retryPending) return
+      retryPending = true
+      setTimeout(() => {
+        retryPending = false
+        attempt(index + 1)
+      }, delay)
+    })
+  }
+  return () => attempt()
 }
 
-// 이벤트 인자가 attempt로 들어가지 않도록 감싼다.
-map.once('idle', () => tryInitMapActors())
-window.addEventListener('catchme:enter-service', () => tryInitMapActors())
+const tryInitMapActors = withBootRetry('지도 고양이·건물 불러오기', initMapActors)
+
+map.once('idle', tryInitMapActors)
+window.addEventListener('catchme:enter-service', tryInitMapActors)
 
 let userPos = null // 최근 GPS 위치 [lng, lat]
 let userPosAccuracy = Infinity // 최근 GPS 정확도(미터)
@@ -1712,54 +1721,54 @@ async function restorePhotos() {
   }
 }
 
+// 실패하면 던진다 — 호출부(withBootRetry)가 재시도한다. 여기서 조용히 삼키면 마커에
+// 내 사진 대신 고양이 대표 사진만 남고, 마커를 눌러도 내 사진첩이 안 열린다.
 async function syncServerPhotos() {
   if (!hasSession()) return
-  try {
-    const data = await getMySightings()
-    const list = data.sightings ?? []
 
-    // 마커는 3D 고양이 모델 위에 떠야 하므로 placement 좌표를 쓴다. s.longitude/latitude는
-    // 촬영 당시 "내가 서 있던 GPS"라, 한 자리에서 여러 마리를 찍으면 좌표가 전부 같아져
-    // 마커들이 한 점에 겹치고 맨 위 하나만 보인다(= 마커가 안 뜨는 것처럼 보임).
-    const serverPhotos = list.map((s) => ({
-      id: `server-${s.id}`,
-      dataUrl: s.imageUrl,
-      position: s.placement
-        ? [Number(s.placement.longitude), Number(s.placement.latitude)]
-        : [Number(s.longitude), Number(s.latitude)],
-      accuracy: 10,
-      createdAt: s.createdAt,
-      catId: s.catId ?? null,
-    }))
+  const data = await getMySightings()
+  const list = data.sightings ?? []
 
-    clearRenderedPhotoMarkers()
+  // 마커는 3D 고양이 모델 위에 떠야 하므로 placement 좌표를 쓴다. s.longitude/latitude는
+  // 촬영 당시 "내가 서 있던 GPS"라, 한 자리에서 여러 마리를 찍으면 좌표가 전부 같아져
+  // 마커들이 한 점에 겹치고 맨 위 하나만 보인다(= 마커가 안 뜨는 것처럼 보임).
+  const serverPhotos = list.map((s) => ({
+    id: `server-${s.id}`,
+    dataUrl: s.imageUrl,
+    position: s.placement
+      ? [Number(s.placement.longitude), Number(s.placement.latitude)]
+      : [Number(s.longitude), Number(s.latitude)],
+    accuracy: 10,
+    createdAt: s.createdAt,
+    catId: s.catId ?? null,
+  }))
 
-    const storedPhotos = await readStoredPhotos()
-    const localPhotos = storedPhotos
-      .filter((photo) => Array.isArray(photo.position) && photo.dataUrl)
+  const storedPhotos = await readStoredPhotos()
+  const localPhotos = storedPhotos
+    .filter((photo) => Array.isArray(photo.position) && photo.dataUrl)
 
-    const combinedPhotos = [...localPhotos]
-    serverPhotos.forEach((sp) => {
-      // catId는 로컬 사진이 문자열(업로드 응답의 String(cat.id)), 서버 목록도 문자열이다.
-      // 예전엔 서버 쪽을 Number로 바꿔 비교해 항상 불일치 → 중복 마커가 쌓였다.
-      const exists = localPhotos.some(
-        (lp) => lp.id === sp.id
-          || (String(lp.catId ?? '') === String(sp.catId ?? '') && distanceInMeters(lp.position, sp.position) < 2)
-      )
-      if (!exists) {
-        combinedPhotos.push(sp)
-      }
-    })
+  // 지울 건 다 읽어온 뒤에 지운다 — 중간에 실패하면 마커만 사라진 채로 남는다.
+  clearRenderedPhotoMarkers()
 
-    catPhotos = combinedPhotos.sort(newestPhotoFirst)
-    catPhotos.forEach((photo) => addPhotoMarker(photo, false))
-    // clearRenderedPhotoMarkers()가 도감 전용 마커까지 지웠으니 되살리고, 사진 마커도
-    // 고양이가 실제로 서 있는 placement 좌표로 다시 맞춘다.
-    syncCatActorMarkers(lastCatActors)
-    renderGallery()
-  } catch (error) {
-    console.warn('서버에서 목격담 정보를 가져와 동기화하지 못했습니다.', error)
-  }
+  const combinedPhotos = [...localPhotos]
+  serverPhotos.forEach((sp) => {
+    // catId는 로컬 사진이 문자열(업로드 응답의 String(cat.id)), 서버 목록도 문자열이다.
+    // 예전엔 서버 쪽을 Number로 바꿔 비교해 항상 불일치 → 중복 마커가 쌓였다.
+    const exists = localPhotos.some(
+      (lp) => lp.id === sp.id
+        || (String(lp.catId ?? '') === String(sp.catId ?? '') && distanceInMeters(lp.position, sp.position) < 2)
+    )
+    if (!exists) {
+      combinedPhotos.push(sp)
+    }
+  })
+
+  catPhotos = combinedPhotos.sort(newestPhotoFirst)
+  catPhotos.forEach((photo) => addPhotoMarker(photo, false))
+  // clearRenderedPhotoMarkers()가 도감 전용 마커까지 지웠으니 되살리고, 사진 마커도
+  // 고양이가 실제로 서 있는 placement 좌표로 다시 맞춘다.
+  syncCatActorMarkers(lastCatActors)
+  renderGallery()
 }
 
 // 게스트 로그인은 항상 새 계정(랜덤 id)을 만들기 때문에, 로그인 시점에 로컬에 남아있는
@@ -3385,10 +3394,12 @@ updateDisplayedName(currentDisplayName())
 // 이 모듈은 로그인 전에 한 번 평가되므로, 위 updateDisplayedName은 아직 세션이 없는
 // 상태(=기본값 "캣집사")로 그려진다. 로그인/닉네임 설정을 마치고 서비스로 들어오는
 // 시점에 저장된 사용자로 이름·아바타를 다시 그려야 방금 입력한 닉네임이 반영된다.
+const trySyncServerPhotos = withBootRetry('서버 목격담 동기화', syncServerPhotos)
+
 window.addEventListener('catchme:enter-service', () => {
   updateDisplayedName(currentDisplayName())
   updateDisplayedAvatar(getStoredUser()?.profileImageUrl ?? null)
-  syncServerPhotos()
+  trySyncServerPhotos()
 })
 
 if (window.location.hash === '#settings') {
