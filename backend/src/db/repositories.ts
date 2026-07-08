@@ -1,6 +1,7 @@
 import { query, withTransaction } from './database.js'
 import type { QueryResultRow } from 'pg'
 import type {
+  BushClueRow,
   CampusZoneRow,
   CatIdentificationCandidateRow,
   CatPhotoRow,
@@ -420,9 +421,9 @@ export const createSighting = async (input: { catId: number; userId: number; pho
   const sighting = result.rows[0]
   await updateCatSeen(input.catId, input.seenAt)
 
-  // Shift placement coordinates by 4.0 - 7.0 meters in a random direction
+  // Shift placement coordinates by 6.0 - 10.0 meters in a random direction
   // so the cat/bush model doesn't overlap exactly with the user avatar.
-  const r = 4.0 + Math.random() * 3.0;
+  const r = 6.0 + Math.random() * 4.0;
   const theta = Math.random() * Math.PI * 2;
   const latOffset = (r * Math.cos(theta)) / 111000;
   const lngOffset = (r * Math.sin(theta)) / (111000 * Math.cos((input.latitude) * Math.PI / 180));
@@ -644,6 +645,20 @@ export const mergeCandidateCat = (sourceCatId: number, targetCatId: number) =>
     await client.query('DELETE FROM cat_placements WHERE cat_id = $1', [sourceCatId])
     await client.query("UPDATE cats SET status = 'merged', updated_at = CURRENT_TIMESTAMP WHERE id = $1", [sourceCatId])
   })
+
+export const findBushClue = (userId: number, catId: number) =>
+  one<BushClueRow>('SELECT * FROM bush_clues WHERE user_id = $1 AND cat_id = $2', [userId, catId])
+
+// 처음 누른 순간의 조각으로 고정한다(같은 유저가 같은 덤불을 다시 눌러도 새로 안 뽑힘) —
+// ON CONFLICT의 no-op UPDATE는 기존 행을 그대로 RETURNING하기 위한 관용구다.
+export const createBushClue = (input: { userId: number; catId: number; cropX: number; cropY: number; cropSize: number }) =>
+  one<BushClueRow>(
+    `INSERT INTO bush_clues (user_id, cat_id, crop_x, crop_y, crop_size)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (user_id, cat_id) DO UPDATE SET crop_x = bush_clues.crop_x
+     RETURNING *`,
+    [input.userId, input.catId, input.cropX, input.cropY, input.cropSize],
+  )
 
 export const findRankings = () =>
   many<{ user_id: number; nickname: string; discovered_count: string }>(

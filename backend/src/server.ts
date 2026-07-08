@@ -49,6 +49,7 @@ app.get('/', (_req, res) => {
       '/api/cats',
       '/api/cats/:catId',
       '/api/cats/:catId/sightings',
+      '/api/cats/:catId/bush-clue',
       '/api/collection',
       '/api/collection/:catId/favorite',
       '/api/gallery/me',

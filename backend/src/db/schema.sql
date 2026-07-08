@@ -124,6 +124,20 @@ CREATE TABLE IF NOT EXISTS user_cat_collections (
   UNIQUE (user_id, cat_id)
 );
 
+-- 덤불(=아직 도감에 없는 고양이)을 클릭했을 때 주는 사진 조각 힌트. 같은 유저가 같은
+-- 고양이의 덤불을 여러 번 눌러도 같은 조각을 다시 보여주도록(재조회 시 새로 안 뽑히게)
+-- (user_id, cat_id) 단위로 한 번만 저장한다. 조각을 다 모아 맞추는 기능은 없고, 힌트 한 장뿐이다.
+CREATE TABLE IF NOT EXISTS bush_clues (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id),
+  cat_id BIGINT NOT NULL REFERENCES cats(id),
+  crop_x DECIMAL(5, 4) NOT NULL,
+  crop_y DECIMAL(5, 4) NOT NULL,
+  crop_size DECIMAL(5, 4) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (user_id, cat_id)
+);
+
 CREATE TABLE IF NOT EXISTS refresh_tokens (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id),

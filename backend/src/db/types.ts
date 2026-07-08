@@ -135,6 +135,16 @@ export interface CatPlacementRow {
   zone_model_type?: string | null
 }
 
+export interface BushClueRow {
+  id: number
+  user_id: number
+  cat_id: number
+  crop_x: number
+  crop_y: number
+  crop_size: number
+  created_at: string
+}
+
 export interface UserCatCollectionRow {
   id: number
   user_id: number

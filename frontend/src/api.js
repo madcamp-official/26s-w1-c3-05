@@ -28,6 +28,7 @@ export const getCatSightings = (catId) => requestJson(`/api/cats/${catId}/sighti
 export const setCatName = (catId, name) => requestJson(`/api/cats/${catId}/name`, jsonBody('PATCH', { name }))
 export const setCatNickname = (catId, customName) =>
   requestJson(`/api/cats/${catId}/nickname`, jsonBody('PATCH', { customName }))
+export const getBushClue = (catId) => requestJson(`/api/cats/${catId}/bush-clue`, jsonBody('POST', {}))
 
 // Collection (도감)
 export const getCollection = () => requestJson('/api/collection')

@@ -118,20 +118,26 @@ function resizeToContainer() {
   camera.updateProjectionMatrix()
 }
 
-function disposeModel() {
-  if (!modelGroup) return
-  modelGroup.traverse((object) => {
+function disposeGroup(group) {
+  group.traverse((object) => {
     if (object.geometry) object.geometry.dispose()
     if (object.material) {
       const materials = Array.isArray(object.material) ? object.material : [object.material]
       materials.forEach((material) => material.dispose())
     }
   })
+}
+
+function disposeModel() {
+  if (!modelGroup) return
+  disposeGroup(modelGroup)
   scene.remove(modelGroup)
   modelGroup = null
 }
 
-function normalizeAndAddModel(sourceScene, extraScale) {
+// 로드된 glb를 "키 1 단위, 발이 y=0"으로 정규화한 뒤 VIEWER_MODEL_SCALE로 맞춘
+// 그룹을 만든다. 단독 뷰어와 미니 프리뷰(createMiniCatModelPreview)가 함께 쓴다.
+function buildNormalizedModelGroup(sourceScene, extraScale) {
   const box = new THREE.Box3().setFromObject(sourceScene)
   const size = box.getSize(new THREE.Vector3())
   const center = box.getCenter(new THREE.Vector3())
@@ -142,8 +148,13 @@ function normalizeAndAddModel(sourceScene, extraScale) {
   holder.scale.setScalar((1 / Math.max(size.y, 0.0001)) * extraScale * VIEWER_MODEL_SCALE)
   holder.add(sourceScene)
 
-  modelGroup = new THREE.Group()
-  modelGroup.add(holder)
+  const group = new THREE.Group()
+  group.add(holder)
+  return group
+}
+
+function normalizeAndAddModel(sourceScene, extraScale) {
+  modelGroup = buildNormalizedModelGroup(sourceScene, extraScale)
   scene.add(modelGroup)
 }
 
@@ -197,4 +208,91 @@ export function closeCat3DViewer() {
     cancelAnimationFrame(animationFrameId)
     animationFrameId = null
   }
+}
+
+// 도감 신규 등록 연출(discovery reveal) 안에 함께 띄우는 작은 3D 프리뷰.
+// 단독 뷰어(위 open/closeCat3DViewer)는 모듈 전역 싱글턴(renderer/scene/camera...)
+// 하나만 유지하는 구조라 재사용할 수 없다 — 임의의 <canvas>에 독립된 렌더러를
+// 새로 붙여서 여러 인스턴스가 동시에 있어도 서로 간섭하지 않게 한다. 인터랙션이
+// 필요 없어(발견 연출 동안 잠깐 보여주는 용도) OrbitControls 없이 y축으로만 천천히
+// 자동 회전시킨다.
+export function createMiniCatModelPreview(canvas) {
+  let localRenderer = null
+  let localScene = null
+  let localCamera = null
+  let localModelGroup = null
+  let localClock = null
+  let localAnimationFrameId = null
+  let localLoadToken = 0
+  let disposed = false
+
+  function ensureLocalRenderer() {
+    if (localRenderer) return
+    localRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+    localRenderer.outputColorSpace = THREE.SRGBColorSpace
+    localRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+
+    localScene = new THREE.Scene()
+    localScene.add(new THREE.HemisphereLight(0xffffff, 0x5f746f, 3.2))
+    const sunlight = new THREE.DirectionalLight(0xfff1d6, 2.0)
+    sunlight.position.set(-2, 3, 5)
+    localScene.add(sunlight)
+
+    const modelCenterY = VIEWER_MODEL_SCALE / 2
+    localCamera = new THREE.PerspectiveCamera(35, 1, 0.05, 50)
+    localCamera.position.set(0, modelCenterY + 0.2 * VIEWER_MODEL_SCALE, 2.1)
+    localCamera.lookAt(0, modelCenterY, 0)
+
+    localClock = new THREE.Clock()
+  }
+
+  function resize() {
+    if (!localRenderer || !canvas.parentElement) return
+    const width = canvas.parentElement.clientWidth || 1
+    const height = canvas.parentElement.clientHeight || 1
+    localRenderer.setSize(width, height, false)
+    localCamera.aspect = width / height
+    localCamera.updateProjectionMatrix()
+  }
+
+  function renderLoop() {
+    if (disposed) return
+    localAnimationFrameId = requestAnimationFrame(renderLoop)
+    const delta = localClock.getDelta()
+    if (localModelGroup) localModelGroup.rotation.y += delta * 0.9
+    localRenderer.render(localScene, localCamera)
+  }
+
+  async function load(modelUrl, modelScale = 1) {
+    if (!modelUrl) return
+    const token = ++localLoadToken
+    await ensureThree()
+    if (disposed || token !== localLoadToken) return
+    ensureLocalRenderer()
+    resize()
+
+    const loader = new GLTFLoader()
+    const gltf = await loader.loadAsync(modelUrl)
+    if (disposed || token !== localLoadToken) return
+
+    if (localModelGroup) {
+      localScene.remove(localModelGroup)
+      disposeGroup(localModelGroup)
+    }
+    localModelGroup = buildNormalizedModelGroup(gltf.scene, modelScale)
+    localScene.add(localModelGroup)
+
+    if (!localAnimationFrameId) renderLoop()
+  }
+
+  function dispose() {
+    disposed = true
+    localLoadToken += 1
+    if (localAnimationFrameId) cancelAnimationFrame(localAnimationFrameId)
+    localAnimationFrameId = null
+    if (localModelGroup) disposeGroup(localModelGroup)
+    localRenderer?.dispose()
+  }
+
+  return { load, resize, dispose }
 }

@@ -1,9 +1,18 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { findActiveCats, findCatById, findCollectionItem, findSightingsByCat, setCatName, setCollectionCustomName } from '../db/repositories.js'
+import {
+  createBushClue,
+  findActiveCats,
+  findBushClue,
+  findCatById,
+  findCollectionItem,
+  findSightingsByCat,
+  setCatName,
+  setCollectionCustomName,
+} from '../db/repositories.js'
 import { getCurrentUser, requireAuth, type AuthRequest } from '../lib/auth.js'
 import { HttpError } from '../lib/httpError.js'
-import { catDetail, catListItem, catSighting } from '../lib/serializers.js'
+import { assetUrl, bushClue, catDetail, catListItem, catSighting } from '../lib/serializers.js'
 
 export const catsRouter = Router()
 
@@ -62,6 +71,35 @@ catsRouter.get('/cats/:catId', requireAuth, async (req: AuthRequest, res, next) 
     const cat = await findCatById(catId)
     if (!cat || (cat.status !== 'active' && cat.status !== 'candidate')) throw new HttpError(404, '고양이를 찾을 수 없습니다.', 'NOT_FOUND')
     res.json(catDetail(cat, await findCollectionItem(user.id, cat.id)))
+  } catch (error) {
+    next(error)
+  }
+})
+
+// 덤불(=아직 도감에 없는 고양이)을 눌렀을 때 주는 사진 조각 힌트. 조각은 (user, cat)당
+// 한 번만 랜덤으로 뽑혀 저장되고, 같은 덤불을 다시 눌러도 같은 조각이 반환된다.
+catsRouter.post('/cats/:catId/bush-clue', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const user = getCurrentUser(req)
+    const catId = z.coerce.number().int().positive().parse(req.params.catId)
+
+    const cat = await findCatById(catId)
+    if (!cat || (cat.status !== 'active' && cat.status !== 'candidate')) throw new HttpError(404, '고양이를 찾을 수 없습니다.', 'NOT_FOUND')
+    if (await findCollectionItem(user.id, catId)) throw new HttpError(400, '이미 도감에 등록된 고양이입니다.', 'ALREADY_DISCOVERED')
+
+    let clue = await findBushClue(user.id, catId)
+    if (!clue) {
+      // 정사각형 조각 하나(전체 사진의 40~60% 크기)를 사진 안 랜덤 위치에서 오려낸다.
+      const size = 0.4 + Math.random() * 0.2
+      const cropX = Math.random() * (1 - size)
+      const cropY = Math.random() * (1 - size)
+      clue = await createBushClue({ userId: user.id, catId, cropX, cropY, cropSize: size })
+    }
+
+    res.json({
+      message: '모르는 고양이예요. 이 주변에 있을지도 모르니 찾아보세요!',
+      ...bushClue(clue, assetUrl(cat.representative_photo_url)),
+    })
   } catch (error) {
     next(error)
   }

@@ -1,4 +1,4 @@
-import type { CampusZoneRow, CatIdentificationCandidateRow, CatPlacementRow, CatRow, CatSightingRow, GalleryPhotoRow, UserCatCollectionRow, UserRow } from '../db/types.js'
+import type { BushClueRow, CampusZoneRow, CatIdentificationCandidateRow, CatPlacementRow, CatRow, CatSightingRow, GalleryPhotoRow, UserCatCollectionRow, UserRow } from '../db/types.js'
 import { buildingModelAsset, resolveBuildingModelKey } from './buildingModels.js'
 import { BUSH_MODEL, modelAsset, resolveModelKey } from './catModels.js'
 
@@ -163,6 +163,12 @@ export const mapObject = (zone: CampusZoneRow, distanceMeters: number) => {
     description: zone.description,
   }
 }
+
+export const bushClue = (row: BushClueRow, mainImageUrl: string | null) => ({
+  catId: String(row.cat_id),
+  imageUrl: mainImageUrl,
+  crop: { x: Number(row.crop_x), y: Number(row.crop_y), size: Number(row.crop_size) },
+})
 
 export const candidate = (row: CatIdentificationCandidateRow) => ({
   catId: String(row.cat_id),

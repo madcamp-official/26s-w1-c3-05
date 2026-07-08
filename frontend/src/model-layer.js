@@ -142,6 +142,65 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
         null
     },
 
+    // 아바타 히트테스트(getScreenPosition)와 동일한 방식으로, 각 고양이/덤불 인스턴스의
+    // 월드 좌표를 화면 픽셀로 투영해 클릭 지점과의 거리로 히트테스트한다.
+    getActorScreenPosition(catId) {
+      const instance = this.instances.get(String(catId))
+      if (!instance?.root || !this.camera || !this.map) return null
+      const vector = new THREE.Vector3(0, 0.5, 0)
+      vector.applyMatrix4(instance.root.matrixWorld)
+      vector.applyMatrix4(this.camera.projectionMatrix)
+
+      const canvas = this.map.getCanvas()
+      return {
+        x: (vector.x * 0.5 + 0.5) * canvas.clientWidth,
+        y: (0.5 - vector.y * 0.5) * canvas.clientHeight,
+      }
+    },
+
+    hitTestActor(point, radiusPx = 46) {
+      let closestId = null
+      let closestDistance = Infinity
+      for (const id of this.instances.keys()) {
+        const screenPoint = this.getActorScreenPosition(id)
+        if (!screenPoint) continue
+        const distance = Math.hypot(point.x - screenPoint.x, point.y - screenPoint.y)
+        if (distance <= radiusPx && distance < closestDistance) {
+          closestDistance = distance
+          closestId = id
+        }
+      }
+      if (!closestId) return null
+      return this.actors.find((actor) => String(actor.catId) === closestId) ?? null
+    },
+
+    // 고양이 클릭 랜덤 상호작용: idle 루프를 잠깐 멈추고 클립 하나를 한 번만 재생한 뒤
+    // idle로 되돌아온다. 덤불이나 clips/idleAction이 없는 인스턴스는 조용히 무시한다.
+    playInteraction(catId, namePattern) {
+      const instance = this.instances.get(String(catId))
+      if (!instance?.mixer || !instance.clips || !instance.idleAction) return false
+      const clip = instance.clips.find((c) => namePattern.test(c.name))
+      if (!clip) return false
+
+      const action = instance.mixer.clipAction(clip)
+      action.reset()
+      action.setLoop(THREE.LoopOnce, 1)
+      action.clampWhenFinished = true
+      action.enabled = true
+      action.fadeIn(0.15)
+      action.play()
+      instance.idleAction.fadeOut(0.15)
+
+      const onFinished = (event) => {
+        if (event.action !== action) return
+        instance.mixer.removeEventListener('finished', onFinished)
+        instance.idleAction.reset().fadeIn(0.2).play()
+        action.fadeOut(0.2)
+      }
+      instance.mixer.addEventListener('finished', onFinished)
+      return true
+    },
+
     modelHeightMeters() {
       const zoom = this.map?.getZoom?.() ?? CAT_WORLD_SCALE_ZOOM_START
       const t = clamp(
@@ -189,10 +248,10 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
 
     makeTransform(actor) {
       if (!this.originCoordinate) this.updateOrigin()
-      const coordinate = MercatorCoordinate.fromLngLat(
-        [Number(actor.lng), Number(actor.lat)],
-        Number(actor.heightOffsetMeters ?? 0)
-      )
+      // 고양이 마커(DOM, 항상 지면 lng/lat)는 높이를 모른다. 여기서 actor.heightOffsetMeters로
+      // 3D 모델을 실제로 띄우면(예: 옥상 고양이 12m) 카메라 원근 때문에 화면상 위치가 마커와
+      // 어긋나 보인다 — 마커 쪽 위치가 기준이므로, 3D 모델도 항상 지면 높이(0)에 투영한다.
+      const coordinate = MercatorCoordinate.fromLngLat([Number(actor.lng), Number(actor.lat)], 0)
       const visibilityScale = this.visibilityProgress * this.visibilityProgress * (3 - 2 * this.visibilityProgress)
       const scale =
         coordinate.meterInMercatorCoordinateUnits() *
@@ -259,6 +318,8 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
             this.scene.add(root)
 
             let mixer = null
+            let idleAction = null
+            let clips = null
             if (isBush) {
               if (bushAnimations?.length) {
                 mixer = new THREE.AnimationMixer(model)
@@ -268,18 +329,19 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
                 this.mixers.push(mixer)
               }
             } else {
-              const loadedClips = modelTemplate.animations || animations
-              const clip = loadedClips?.find((c) => c.name.toLowerCase() === String(actor.animationKey || 'sit').toLowerCase()) ??
-                loadedClips?.find((c) => /sit|sitting|seated/i.test(c.name)) ??
-                loadedClips?.[0]
+              clips = modelTemplate.animations || animations
+              const clip = clips?.find((c) => c.name.toLowerCase() === String(actor.animationKey || 'sit').toLowerCase()) ??
+                clips?.find((c) => /sit|sitting|seated/i.test(c.name)) ??
+                clips?.[0]
               if (clip) {
                 mixer = new THREE.AnimationMixer(model)
-                mixer.clipAction(clip).play()
+                idleAction = mixer.clipAction(clip)
+                idleAction.play()
                 this.mixers.push(mixer)
               }
             }
 
-            instance = { root, mixer, actorSignature }
+            instance = { root, mixer, actorSignature, idleAction, clips }
             this.instances.set(id, instance)
           } catch (error) {
             console.warn('cat/bush GLB failed to load in custom layer:', actor.modelUrl, error)
@@ -332,8 +394,8 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
   }
 }
 
-// 로드뷰(팔로우)에서만 캣타워를 1.5배 더 크게 보여준다. 항공뷰 구도엔 영향 없다.
-const BUILDING_FOLLOW_SIZE_BOOST = 1.5
+// 로드뷰(팔로우)에서만 캣타워를 2배 더 크게 보여준다. 항공뷰 구도엔 영향 없다.
+const BUILDING_FOLLOW_SIZE_BOOST = 2
 
 function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
   return {
@@ -807,6 +869,20 @@ export function createAnimatedModelLayer(map) {
         return this.avatarWorldLayer.playAnimation(name)
       }
       return false
+    },
+
+    // 클릭 지점과 가장 가까운 고양이/덤불 액터를 찾는다. 고양이(discovered)와
+    // 덤불(undiscovered)을 구분하는 건 호출하는 쪽(actor.modelType)의 몫이다.
+    hitTestCatActor(point, radiusPx = 46) {
+      return this.catWorldLayer?.hitTestActor(point, radiusPx) ?? null
+    },
+
+    // 도감에 이미 등록된 고양이를 눌렀을 때 랜덤 상호작용(일어나기/둘러보기/야옹) 재생.
+    playCatInteraction(catId) {
+      if (!this.catWorldLayer) return false
+      const patterns = [/stand_up/i, /look_around/i, /meow/i]
+      const pattern = patterns[Math.floor(Math.random() * patterns.length)]
+      return this.catWorldLayer.playInteraction(catId, pattern)
     },
 
     cloneModel(template) {

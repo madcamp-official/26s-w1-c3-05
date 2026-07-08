@@ -2,10 +2,11 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { addFlowerDecorations } from './FlowerDecorations.js'
 import { createAnimatedModelLayer } from './model-layer.js'
-import { openCat3DViewer, preloadCat3DAssets } from './cat-3d-viewer.js'
+import { openCat3DViewer, preloadCat3DAssets, createMiniCatModelPreview } from './cat-3d-viewer.js'
 import { resolveCatModelAsset } from './cat-models.js'
 import { API_BASE_URL, authFetch, getStoredUser, hasSession, logout, updateStoredUser } from './auth.js'
 import {
+  getBushClue,
   getCat,
   getCats,
   getCatSightings,
@@ -67,17 +68,12 @@ const map = new maplibregl.Map({
 
 const animatedModelLayer = createAnimatedModelLayer(map)
 const mockBuildingMarkers = new Map()
-const catMarkers = new Map()
 const MOCK_MAP_MODE = false
-// 캣타워는 완전히 고정된 좌표라, 미쿠 실제 위치가 타워와 겹치면 항공뷰에서 서로 가려버린다.
-// avatarDisplayPosition()이 이 목록을 기준으로 미쿠를 옆으로 살짝 밀어낸다.
-let buildingActorsCache = []
 
-// 가까이서 볼 때(follow 시점 줌 범위) 고양이 마커가 3D 모델과 겹치지 않게 위쪽으로 띄운다.
+// 가까이서 볼 때(follow 시점 줌 범위) 사진 마커가 3D 고양이 모델과 겹치지 않게 위쪽으로 띄운다.
 const CAT_MARKER_DEFAULT_OFFSET = [0, -18]
 const CAT_MARKER_FOLLOW_MIN_OFFSET = [0, -34]
 const CAT_MARKER_CLOSE_OFFSET = [0, -92]
-const CAT_MARKER_MIN_VISIBLE_ZOOM = 15.0
 
 function catMarkerOffset() {
   if (!isFollowing) return CAT_MARKER_DEFAULT_OFFSET
@@ -280,103 +276,11 @@ function declutterBuildingMarkers() {
 
 map.on('move', declutterBuildingMarkers)
 
-function addCatMarker(cat) {
-  if (catMarkers.has(cat.catId)) return
-
-  const isDiscovered = cat.displayType === 'discovered_cat'
-  const marker = document.createElement('button')
-  marker.type = 'button'
-  marker.dataset.displayType = cat.displayType ?? ''
-  marker.dataset.name = cat.name ?? ''
-  marker.dataset.mainImageUrl = cat.mainImageUrl ?? ''
-
-  if (isDiscovered) {
-    marker.className = 'mock-cat-info-marker mock-cat-map-marker'
-    marker.setAttribute('aria-label', `${cat.name} latest sighting`)
-
-    const image = document.createElement('img')
-    image.src = resolveAssetUrl(cat.mainImageUrl) ?? ''
-    image.alt = ''
-    const content = document.createElement('span')
-    content.className = 'mock-cat-info-content'
-    const name = document.createElement('strong')
-    name.textContent = cat.name
-    const meta = document.createElement('small')
-    meta.textContent = cat.zoneName ?? ''
-    content.append(name, meta)
-    marker.append(image, content)
-  } else {
-    // 아직 사진으로 발견하지 않은 고양이는 이름/사진 없이 "???"로만 표시한다.
-    marker.className = 'mock-cat-unknown-marker mock-cat-map-marker'
-    marker.setAttribute('aria-label', '아직 발견하지 않은 고양이')
-    marker.textContent = '???'
-  }
-
-  const markerInstance = new maplibregl.Marker({
-    element: marker,
-    anchor: 'bottom',
-    pitchAlignment: 'viewport',
-    rotationAlignment: 'viewport',
-    subpixelPositioning: true,
-    offset: catMarkerOffset(),
-  })
-    .setLngLat([cat.lng, cat.lat])
-    .addTo(map)
-
-  catMarkers.set(cat.catId, markerInstance)
-  setCatMarkerVisibility(isFollowing && !isTransitioning)
-}
-
-function syncCatMarkers(cats) {
-  const activeIds = new Set(cats.map((cat) => String(cat.catId)))
-
-  for (const cat of cats) {
-    const existing = catMarkers.get(cat.catId)
-    if (existing) {
-      const element = existing.getElement()
-      const changed =
-        element.dataset.displayType !== (cat.displayType ?? '') ||
-        element.dataset.name !== (cat.name ?? '') ||
-        element.dataset.mainImageUrl !== (cat.mainImageUrl ?? '')
-
-      if (changed) {
-        existing.remove()
-        catMarkers.delete(cat.catId)
-        addCatMarker(cat)
-        continue
-      }
-    }
-
-    if (catMarkers.has(cat.catId)) {
-      catMarkers.get(cat.catId).setLngLat([cat.lng, cat.lat])
-    } else {
-      addCatMarker(cat)
-    }
-  }
-
-  for (const [catId, marker] of catMarkers) {
-    if (activeIds.has(String(catId))) continue
-    marker.remove()
-    catMarkers.delete(catId)
-  }
-
-  setCatMarkerVisibility(isFollowing && !isTransitioning)
-}
-
-function setCatMarkerVisibility(visible) {
-  const canPlaceMarker = map.getZoom() >= CAT_MARKER_MIN_VISIBLE_ZOOM
-  const shouldShow = visible && canPlaceMarker
-  catMarkers.forEach((marker) => {
-    const element = marker.getElement()
-    element.hidden = !shouldShow
-    element.style.display = shouldShow ? '' : 'none'
-  })
-}
-
+// 이름/구역 정보 카드 마커는 없앴다 — 사용자가 직접 찍은 사진 마커(photo-marker)만
+// 보여주고, 그 마커를 3D 고양이 모델 위로 띄우는 데 이 오프셋을 재사용한다.
 function updateCatMarkerPresentation() {
   const offset = catMarkerOffset()
-  catMarkers.forEach((marker) => marker.setOffset(offset))
-  setCatMarkerVisibility(isFollowing && !isTransitioning)
+  photoMarkerGroups.forEach((group) => group.markerInstance?.setOffset(offset))
 }
 
 map.on('zoom', updateCatMarkerPresentation)
@@ -395,54 +299,6 @@ function followModeMaxViewRadiusMeters(latitude) {
   const { clientWidth, clientHeight } = map.getContainer()
   const viewportDiagonalPx = Math.hypot(clientWidth || 0, clientHeight || 0)
   return (viewportDiagonalPx / 2) * metersPerPixel
-}
-
-
-// 항공뷰에서 미쿠 실제 위치가 캣타워와 화면상 너무 가까우면(겹쳐 보이면) 캣타워는 고정이라
-// 옮길 수 없으니 미쿠 쪽을 타워 반대 방향으로 살짝 밀어낸다. 지도 카메라가 따라가거나
-// 사진 촬영 좌표로 쓰이는 실제 userPos는 건드리지 않고, 3D 레이어에 "그릴 위치"만 바꾼다.
-// 오버뷰는 pitch가 있어 원근이 압축되므로 지상 거리(m)가 아니라 declutterBuildingMarkers와
-// 같은 방식으로 화면 픽셀 거리를 기준으로 판단해야 실제로 겹쳐 보이는지를 정확히 잡아낸다.
-// 다만 이 줌에서는 픽셀 1개가 실제 몇 미터씩이나 되므로(항공뷰 전체가 캠퍼스 몇 km를
-// 담음), 픽셀 기준을 그대로 미터로 환산하면 수백 m씩 밀려날 수 있다 — 안전하게 상한을 둔다.
-const AVATAR_TOWER_MIN_SEPARATION_PX = 40
-const AVATAR_TOWER_MAX_PUSH_METERS = 250
-
-function avatarDisplayPosition(rawPosition) {
-  if (isFollowing || !rawPosition || buildingActorsCache.length === 0) return rawPosition
-
-  let [lng, lat] = rawPosition
-  const metersPerPixel = metersPerPixelAtZoom(map.getZoom(), lat)
-  const metersPerDegLat = 111320
-  const metersPerDegLng = 111320 * Math.cos((lat * Math.PI) / 180)
-
-  for (const tower of buildingActorsCache) {
-    const towerLng = Number(tower.lng)
-    const towerLat = Number(tower.lat)
-    const avatarPoint = map.project([lng, lat])
-    const towerPoint = map.project([towerLng, towerLat])
-    const pixelDistance = Math.hypot(avatarPoint.x - towerPoint.x, avatarPoint.y - towerPoint.y)
-    if (pixelDistance >= AVATAR_TOWER_MIN_SEPARATION_PX) continue
-
-    let directionLng = lng - towerLng
-    let directionLat = lat - towerLat
-    let directionLength = Math.hypot(directionLng, directionLat)
-    if (directionLength < 1e-9) {
-      // 완전히 같은 좌표면 고정된 방향(동쪽)으로 밀어낸다.
-      directionLng = 1
-      directionLat = 0
-      directionLength = 1
-    }
-
-    const pushMeters = Math.min(
-      (AVATAR_TOWER_MIN_SEPARATION_PX - pixelDistance) * metersPerPixel,
-      AVATAR_TOWER_MAX_PUSH_METERS
-    )
-    lng += (directionLng / directionLength) * (pushMeters / metersPerDegLng)
-    lat += (directionLat / directionLength) * (pushMeters / metersPerDegLat)
-  }
-
-  return [lng, lat]
 }
 
 
@@ -473,7 +329,6 @@ async function fetchCatActors(origin = markerLngLat()) {
 async function refreshCatActors(origin = markerLngLat()) {
   if (!hasSession()) return []
   const { cats = [] } = await fetchCatActors(origin)
-  syncCatMarkers(cats)
   animatedModelLayer.setCatActors(cats)
   return cats
 }
@@ -490,12 +345,10 @@ async function initMapActors() {
     fetchCatActors(origin),
   ])
 
-  buildingActorsCache = objects
   objects.forEach(addMockBuildingMarker)
   animatedModelLayer.setBuildingActors(objects)
-  syncCatMarkers(cats)
   animatedModelLayer.setCatActors(cats)
-  animatedModelLayer.setAvatarPosition(avatarDisplayPosition(origin))
+  animatedModelLayer.setAvatarPosition(origin)
 }
 
 function clearMockBuildingMarkers() {
@@ -512,13 +365,11 @@ async function refetchMapActorsForGps(origin) {
   mapActorsRefetchedForGps = true
   try {
     const [{ objects }, { cats }] = await Promise.all([fetchMapObjects(origin), fetchCatActors(origin)])
-    buildingActorsCache = objects
     clearMockBuildingMarkers()
     objects.forEach(addMockBuildingMarker)
     animatedModelLayer.setBuildingActors(objects)
-    syncCatMarkers(cats)
     animatedModelLayer.setCatActors(cats)
-    animatedModelLayer.setAvatarPosition(avatarDisplayPosition(origin))
+    animatedModelLayer.setAvatarPosition(origin)
   } catch (error) {
     mapActorsRefetchedForGps = false
     console.warn('GPS 위치 기준 맵 데이터 재조회 실패:', error)
@@ -571,7 +422,6 @@ function applyOrbit() {
 map.on('moveend', () => {
   isTransitioning = false
   animatedModelLayer.setAvatarTransitioning(false)
-  setCatMarkerVisibility(isFollowing)
 })
 
 // ─────────────────────────────────────────────
@@ -585,7 +435,7 @@ function startPositionTracking() {
       userPos = [pos.coords.longitude, pos.coords.latitude]
       userPosAccuracy = pos.coords.accuracy
       userPosUpdatedAt = Date.now()
-      animatedModelLayer.setAvatarPosition(avatarDisplayPosition(userPos))
+      animatedModelLayer.setAvatarPosition(userPos)
       refetchMapActorsForGps(userPos)
       // 마커 시점일 때는 카메라도 내 위치를 따라감.
       // GPS 좌표가 튀어도 화면이 순간이동하지 않게 부드럽게 이동한다.
@@ -613,7 +463,7 @@ function refreshPositionForPhoto() {
         userPos = [pos.coords.longitude, pos.coords.latitude]
         userPosAccuracy = pos.coords.accuracy
         userPosUpdatedAt = Date.now()
-        animatedModelLayer.setAvatarPosition(avatarDisplayPosition(userPos))
+        animatedModelLayer.setAvatarPosition(userPos)
         resolve(true)
       },
       (error) => {
@@ -693,7 +543,6 @@ function toggleView() {
   isTransitioning = true
   animatedModelLayer.setFollowing(isFollowing)
   animatedModelLayer.setAvatarTransitioning(true)
-  setCatMarkerVisibility(false)
 
   if (isFollowing) {
     // 마커(내 위치) 시점으로: 궤도 카메라 초기화 + 기본 제스처 끄기.
@@ -830,6 +679,17 @@ map.on('click', (e) => {
       return
     }
   }
+  const hitActor = animatedModelLayer.hitTestCatActor(e.point)
+  if (hitActor) {
+    if (hitActor.modelType === 'bush') {
+      handleBushClick(hitActor.catId)
+    } else {
+      animatedModelLayer.playCatInteraction(hitActor.catId)
+    }
+    lastTapTime = 0
+    lastTapPoint = null
+    return
+  }
   const now = Date.now()
   const dt = now - lastTapTime
   const dist = lastTapPoint
@@ -883,6 +743,114 @@ const newestPhotoFirst = (a, b) => Date.parse(b.createdAt) - Date.parse(a.create
 let pendingConfirmation = null
 let pendingCapturedPhoto = null
 let pendingNewCatId = null
+
+// ── 도감 신규 등록 연출 (지도 암전 → 오라 → 고양이 사진 → 발자국 → 3D 모델 → 미니 카드) ──
+const discoveryReveal = document.querySelector('#discovery-reveal')
+const discoveryCatImg = discoveryReveal?.querySelector('[data-discovery-cat-img]')
+const discoveryCatName = discoveryReveal?.querySelector('[data-discovery-cat-name]')
+const discoveryCatIndex = discoveryReveal?.querySelector('[data-discovery-cat-index]')
+const discoveryModelCanvas = discoveryReveal?.querySelector('[data-discovery-model-canvas]')
+const discoveryModelPreview = discoveryModelCanvas ? createMiniCatModelPreview(discoveryModelCanvas) : null
+const DISCOVERY_REVEAL_MS = 3000
+
+// 발견 응답(data.cat)엔 modelUrl이 없어 id로 getCat을 한 번 더 불러온다. catDetail은
+// pattern이 아니라 cats.model_key 기준으로 modelUrl/modelScale을 이미 계산해서 주므로
+// (backend/src/lib/serializers.ts catDetail), 그걸 그대로 쓴다 — 막 발견한 candidate
+// 고양이는 관리자가 승인하기 전엔 pattern이 항상 null이라, pattern으로 다시 계산하면
+// (이전 버전의 버그) 매번 조용히 실패해서 모델이 하나도 안 떴다.
+async function loadDiscoveryModel(catId) {
+  if (!discoveryModelPreview || !catId) return
+  try {
+    const cat = await getCat(catId)
+    if (!cat?.modelUrl) return
+    discoveryModelPreview.resize()
+    await discoveryModelPreview.load(cat.modelUrl, cat.modelScale ?? 1)
+  } catch (error) {
+    console.warn('발견 연출용 3D 모델을 불러오지 못했습니다.', error)
+  }
+}
+
+function playDiscoveryReveal({ name, imageUrl, dexIndex } = {}) {
+  return new Promise((resolve) => {
+    if (!discoveryReveal) {
+      resolve()
+      return
+    }
+    if (discoveryCatImg) discoveryCatImg.src = imageUrl || ''
+    if (discoveryCatName) discoveryCatName.textContent = name || '새로운 고양이'
+    if (discoveryCatIndex) discoveryCatIndex.textContent = dexIndex ? `도감 #${dexIndex}` : '도감'
+
+    discoveryReveal.hidden = false
+    discoveryReveal.classList.remove('is-active')
+    void discoveryReveal.offsetWidth // 강제 리플로우로 애니메이션 재시작 보장
+    discoveryReveal.classList.add('is-active')
+    loadDiscoveryModel(dexIndex)
+
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      discoveryReveal.classList.remove('is-active')
+      discoveryReveal.hidden = true
+      discoveryReveal.removeEventListener('click', finish)
+      resolve()
+    }
+    discoveryReveal.addEventListener('click', finish, { once: true })
+    setTimeout(finish, DISCOVERY_REVEAL_MS)
+  })
+}
+
+// ── 덤불 클릭 힌트 (메시지 + 그 고양이 사진 조각) ──
+const bushHint = document.querySelector('#bush-hint')
+const bushHintPhoto = bushHint?.querySelector('[data-bush-hint-photo]')
+const bushHintMessage = bushHint?.querySelector('[data-bush-hint-message]')
+const BUSH_HINT_AUTO_HIDE_MS = 5000
+let bushHintHideTimer = null
+let bushHintRequestId = 0
+
+function hideBushHint() {
+  if (!bushHint) return
+  bushHint.classList.remove('is-visible')
+  clearTimeout(bushHintHideTimer)
+}
+
+function showBushHint({ message, imageUrl, crop }) {
+  if (!bushHint) return
+  if (bushHintMessage) bushHintMessage.textContent = message || '모르는 고양이예요. 이 주변에 있을지도 모르니 찾아보세요!'
+  if (bushHintPhoto) {
+    if (imageUrl && crop) {
+      // 서버가 잘라준 정사각형 조각(crop.x/y/size, 0~1 비율)만 보이게, 배경 이미지를
+      // 1/size배로 확대하고 그 조각이 프레임을 채우도록 위치를 맞춘다.
+      const zoom = 1 / Math.max(crop.size, 0.01)
+      const posX = crop.size >= 1 ? 0 : (crop.x / (1 - crop.size)) * 100
+      const posY = crop.size >= 1 ? 0 : (crop.y / (1 - crop.size)) * 100
+      bushHintPhoto.style.backgroundImage = `url("${imageUrl}")`
+      bushHintPhoto.style.backgroundSize = `${zoom * 100}% ${zoom * 100}%`
+      bushHintPhoto.style.backgroundPosition = `${posX}% ${posY}%`
+    } else {
+      bushHintPhoto.style.backgroundImage = ''
+    }
+  }
+
+  bushHint.hidden = false
+  void bushHint.offsetWidth
+  bushHint.classList.add('is-visible')
+  clearTimeout(bushHintHideTimer)
+  bushHintHideTimer = setTimeout(hideBushHint, BUSH_HINT_AUTO_HIDE_MS)
+}
+
+bushHint?.querySelector('[data-bush-hint-close]')?.addEventListener('click', hideBushHint)
+
+async function handleBushClick(catId) {
+  const requestId = ++bushHintRequestId
+  try {
+    const data = await getBushClue(catId)
+    if (requestId !== bushHintRequestId) return // 그 사이 다른 덤불을 눌렀으면 무시
+    showBushHint(data)
+  } catch (error) {
+    console.warn('덤불 힌트를 불러오지 못했습니다.', error)
+  }
+}
 
 function showCaptureLoading() {
   window.showCaptureResult?.('loading')
@@ -1053,11 +1021,16 @@ function showLocationPhotos(photos) {
   })
 }
 
-function nearestPhotoMarkerGroup(position, accuracy) {
+function nearestPhotoMarkerGroup(position, accuracy, catId) {
   let nearestGroup = null
   let nearestDistance = Infinity
 
   for (const group of photoMarkerGroups.values()) {
+    // 서로 다른 고양이가 가까운 곳에서 찍혔다고 마커 하나로 뭉쳐 보이면 안 되니,
+    // catId가 있는 사진끼리는 반드시 같은 고양이일 때만 묶는다(레거시 사진처럼
+    // catId를 모르는 경우엔 예전처럼 거리만으로 묶는다).
+    if (String(catId ?? '') !== String(group.catId ?? '')) continue
+
     const distance = distanceInMeters(position, group.position)
     const groupingRadius = photoGroupRadius(accuracy, group.accuracy)
     if (distance <= groupingRadius && distance < nearestDistance) {
@@ -1070,7 +1043,7 @@ function nearestPhotoMarkerGroup(position, accuracy) {
 
 function addPhotoMarker(photo, animate = true) {
   const photoAccuracy = normalizedGpsAccuracy(photo.accuracy)
-  const existingGroup = nearestPhotoMarkerGroup(photo.position, photoAccuracy)
+  const existingGroup = nearestPhotoMarkerGroup(photo.position, photoAccuracy, photo.catId)
 
   if (existingGroup) {
     existingGroup.photos.push(photo)
@@ -1119,9 +1092,11 @@ function addPhotoMarker(photo, animate = true) {
     photos: [photo],
     position: photo.position,
     accuracy: photoAccuracy,
+    catId: photo.catId ?? null,
     element,
     image,
     badge,
+    markerInstance: null,
   }
   photoMarkerGroups.set(photo.id, group)
   animatedModelLayer.addCat(photo.id, photo.position)
@@ -1131,12 +1106,15 @@ function addPhotoMarker(photo, animate = true) {
     showLocationPhotos(group.photos)
   })
 
-  new maplibregl.Marker({
+  // 이 사진 마커가 그 위치의 유일한 마커라, 3D 고양이 모델과 겹치지 않게
+  // catMarkerOffset()으로 위로 띄워둔다(줌/시점 전환 시 updateCatMarkerPresentation이 갱신).
+  group.markerInstance = new maplibregl.Marker({
     element,
     anchor: 'bottom',
     pitchAlignment: 'viewport',
     rotationAlignment: 'viewport',
     subpixelPositioning: true,
+    offset: catMarkerOffset(),
   })
     .setLngLat(photo.position)
     .addTo(map)
@@ -1239,7 +1217,7 @@ function setCaptureCopy(panelName, { kicker, title, description } = {}) {
   if (descriptionElement && description) descriptionElement.textContent = description
 }
 
-function renderMatchedCapture(data, imageUrl) {
+async function renderMatchedCapture(data, imageUrl) {
   const catName = data?.cat?.name || '이 고양이'
   setCaptureCopy('existing', {
     kicker: data?.cat?.isNewCollection ? '도감에 새로 담겼어요!' : '도감에서 찾았어요!',
@@ -1273,10 +1251,14 @@ function renderMatchedCapture(data, imageUrl) {
     )
   }
 
-  window.showCaptureResult?.('existing', imageUrl || capturePhotoUrl(data))
+  const resolvedImageUrl = imageUrl || capturePhotoUrl(data)
+  if (data?.cat?.isNewCollection) {
+    await playDiscoveryReveal({ name: catName, imageUrl: resolvedImageUrl, dexIndex: data?.cat?.id })
+  }
+  window.showCaptureResult?.('existing', resolvedImageUrl)
 }
 
-function renderNewCatCapture(data, imageUrl) {
+async function renderNewCatCapture(data, imageUrl) {
   // 이 고양이의 id를 기억해 두면 아래 이름짓기 폼(2-1)에서 바로 이름을 저장할 수 있다.
   pendingNewCatId = data?.cat?.id ?? null
   setCaptureCopy('new', {
@@ -1298,7 +1280,9 @@ function renderNewCatCapture(data, imageUrl) {
     nameMessage.textContent = ''
     nameMessage.hidden = true
   }
-  window.showCaptureResult?.('new', imageUrl || capturePhotoUrl(data))
+  const resolvedImageUrl = imageUrl || capturePhotoUrl(data)
+  await playDiscoveryReveal({ name: data?.cat?.name, imageUrl: resolvedImageUrl, dexIndex: data?.cat?.id })
+  window.showCaptureResult?.('new', resolvedImageUrl)
 }
 
 function renderFailureCapture(data, imageUrl) {
@@ -1497,6 +1481,7 @@ async function processCapturedFile(file) {
 
     if (['matched', 'new_cat_candidate'].includes(result?.detectionStatus)) {
       if (result.placement) photo.position = [result.placement.longitude, result.placement.latitude]
+      photo.catId = result?.cat?.id ?? null
       await keepSuccessfulPhoto(photo)
       refreshCatActors(photo.position).catch((error) => console.warn('지도 고양이를 갱신하지 못했습니다.', error))
       pendingCapturedPhoto = null
@@ -1531,8 +1516,9 @@ captureCandidateForm?.addEventListener('submit', async (event) => {
     const result = await confirmSightingCandidate(selected)
     renderCaptureResponse(result, pendingConfirmation?.imageUrl)
     if (['matched', 'new_cat_candidate'].includes(result?.detectionStatus)) {
-      if (result.placement && pendingConfirmation?.photo) {
-        pendingConfirmation.photo.position = [result.placement.longitude, result.placement.latitude]
+      if (pendingConfirmation?.photo) {
+        if (result.placement) pendingConfirmation.photo.position = [result.placement.longitude, result.placement.latitude]
+        pendingConfirmation.photo.catId = result?.cat?.id ?? null
       }
       const refreshPosition = pendingConfirmation?.photo?.position ?? markerLngLat()
       await keepSuccessfulPhoto(pendingConfirmation?.photo)

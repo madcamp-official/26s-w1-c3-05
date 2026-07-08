@@ -265,6 +265,29 @@ app.patch('/api/cats/:catId/nickname', (req, res) => {
   res.json({ catId: String(cat.id), customName: req.body?.customName ?? null, message: '별명이 저장되었습니다. (mock)' })
 })
 
+// 덤불 힌트: (cat)당 한 번만 랜덤 조각을 뽑아 저장 — 실제 backend/src/routes/cats.ts와 동일한
+// upsert-once 동작을 인메모리로 흉내낸다. 목 서버라 유저 구분이 없어 catId만으로 키를 잡는다.
+const bushClues = new Map()
+
+app.post('/api/cats/:catId/bush-clue', (req, res) => {
+  const cat = cats.find((item) => String(item.id) === req.params.catId)
+  if (!cat) return res.status(404).json({ message: '고양이를 찾을 수 없습니다.', code: 'NOT_FOUND' })
+  if (cat.discovered) return res.status(400).json({ message: '이미 도감에 등록된 고양이입니다.', code: 'ALREADY_DISCOVERED' })
+
+  let clue = bushClues.get(cat.id)
+  if (!clue) {
+    const size = 0.4 + Math.random() * 0.2
+    clue = { cropX: Math.random() * (1 - size), cropY: Math.random() * (1 - size), cropSize: size }
+    bushClues.set(cat.id, clue)
+  }
+  res.json({
+    message: '모르는 고양이예요. 이 주변에 있을지도 모르니 찾아보세요!',
+    catId: String(cat.id),
+    imageUrl: PLACEHOLDER_IMAGE,
+    crop: { x: clue.cropX, y: clue.cropY, size: clue.cropSize },
+  })
+})
+
 // ── Collection (도감) ──
 app.get('/api/collection', (_req, res) => res.json({ cats: cats.filter((cat) => cat.discovered).map(collectionCat) }))
 

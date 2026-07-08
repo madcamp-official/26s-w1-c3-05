@@ -981,6 +981,37 @@
       </section>
     </div>
 
+    <!-- 도감 신규 등록 연출: 지도 암전 → 따뜻한 오라 → 고양이 등장 → 발자국 → 3D 모델 → 미니 카드 -->
+    <div id="discovery-reveal" class="discovery-reveal" hidden>
+      <div class="discovery-reveal-backdrop"></div>
+      <div class="discovery-reveal-content">
+        <div class="discovery-reveal-stage">
+          <div class="discovery-reveal-aura"></div>
+          <img class="discovery-reveal-cat" data-discovery-cat-img alt="" />
+          <div class="discovery-reveal-paws" aria-hidden="true">
+            <span class="discovery-paw discovery-paw-1">🐾</span>
+            <span class="discovery-paw discovery-paw-2">🐾</span>
+            <span class="discovery-paw discovery-paw-3">🐾</span>
+          </div>
+        </div>
+        <div class="discovery-reveal-model-stage" data-discovery-model-stage>
+          <canvas class="discovery-reveal-model-canvas" data-discovery-model-canvas></canvas>
+        </div>
+      </div>
+      <div class="discovery-reveal-card">
+        <span class="discovery-reveal-card-kicker">새로운 친구 발견!</span>
+        <strong class="discovery-reveal-card-name" data-discovery-cat-name></strong>
+        <span class="discovery-reveal-card-index" data-discovery-cat-index></span>
+      </div>
+    </div>
+
+    <!-- 덤불 클릭 힌트 카드: 메시지 + 그 고양이 사진의 조각(전체는 안 보여줌) -->
+    <div id="bush-hint" class="bush-hint" hidden>
+      <button class="bush-hint-close" type="button" data-bush-hint-close aria-label="힌트 닫기">✕</button>
+      <div class="bush-hint-photo" data-bush-hint-photo></div>
+      <p class="bush-hint-message" data-bush-hint-message></p>
+    </div>
+
     <script type="module" src="/src/auth-ui.js"></script>
     <script>
       (() => {
