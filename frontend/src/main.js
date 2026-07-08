@@ -963,6 +963,26 @@ async function storePhoto(photo) {
   })
 }
 
+// 게스트 계정은 로그아웃하면 다음번엔 완전히 다른 계정(서버 기준 새 유저)이 되므로,
+// 로그인 상태와 무관하게 브라우저에 전역으로 남는 이 로컬 사진 저장소를 그대로 두면
+// 다음 게스트가 이전 게스트의 사진 마커를 자기 것처럼 이어받는다. 게스트 로그아웃
+// 시점에 반드시 비워서 다음 게스트가 빈 상태로 시작하게 한다.
+async function clearStoredPhotos() {
+  const database = await openPhotoDatabase()
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(PHOTO_STORE_NAME, 'readwrite')
+    transaction.objectStore(PHOTO_STORE_NAME).clear()
+    transaction.oncomplete = () => {
+      database.close()
+      resolve()
+    }
+    transaction.onerror = () => {
+      database.close()
+      reject(transaction.error)
+    }
+  })
+}
+
 function showPhoto(dataUrl) {
   photoPreview.src = dataUrl
   photoView.hidden = false
@@ -1758,13 +1778,24 @@ document.querySelector('.cat-menu-logout')?.addEventListener('click', async (eve
   const originalHtml = button.innerHTML
   button.disabled = true
   button.textContent = '로그아웃 중...'
+  const isGuest = getStoredUser()?.authProvider === 'guest'
 
   try {
-    await logout()
-    window.location.replace(window.location.pathname)
-  } catch (error) {
-    console.warn('로그아웃 요청에 실패했습니다.', error)
-    await logout()
+    try {
+      await logout()
+    } catch (error) {
+      console.warn('로그아웃 요청에 실패했습니다.', error)
+      await logout()
+    }
+
+    if (isGuest) {
+      try {
+        await clearStoredPhotos()
+      } catch (error) {
+        console.warn('게스트 로컬 사진을 정리하지 못했습니다.', error)
+      }
+    }
+
     window.location.replace(window.location.pathname)
   } finally {
     button.disabled = false
