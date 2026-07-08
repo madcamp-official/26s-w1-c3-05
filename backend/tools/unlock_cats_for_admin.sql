@@ -26,12 +26,12 @@ BEGIN
   IF v_cat_id IS NOT NULL THEN
     SELECT id INTO v_photo_id FROM cat_photos WHERE cat_id = v_cat_id LIMIT 1;
     IF v_photo_id IS NOT NULL THEN
-      INSERT INTO user_cat_collections (user_id, cat_id, first_photo_id, first_discovered_at)
-      VALUES (v_admin_id, v_cat_id, v_photo_id, CURRENT_TIMESTAMP)
+      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
+      VALUES (v_admin_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, cat_id) DO NOTHING;
 
-      INSERT INTO user_cat_collections (user_id, cat_id, first_photo_id, first_discovered_at)
-      VALUES (v_user_id, v_cat_id, v_photo_id, CURRENT_TIMESTAMP)
+      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
+      VALUES (v_user_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, cat_id) DO NOTHING;
     END IF;
   END IF;
@@ -41,12 +41,12 @@ BEGIN
   IF v_cat_id IS NOT NULL THEN
     SELECT id INTO v_photo_id FROM cat_photos WHERE cat_id = v_cat_id LIMIT 1;
     IF v_photo_id IS NOT NULL THEN
-      INSERT INTO user_cat_collections (user_id, cat_id, first_photo_id, first_discovered_at)
-      VALUES (v_admin_id, v_cat_id, v_photo_id, CURRENT_TIMESTAMP)
+      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
+      VALUES (v_admin_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, cat_id) DO NOTHING;
 
-      INSERT INTO user_cat_collections (user_id, cat_id, first_photo_id, first_discovered_at)
-      VALUES (v_user_id, v_cat_id, v_photo_id, CURRENT_TIMESTAMP)
+      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
+      VALUES (v_user_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, cat_id) DO NOTHING;
     END IF;
   END IF;
@@ -56,12 +56,12 @@ BEGIN
   IF v_cat_id IS NOT NULL THEN
     SELECT id INTO v_photo_id FROM cat_photos WHERE cat_id = v_cat_id LIMIT 1;
     IF v_photo_id IS NOT NULL THEN
-      INSERT INTO user_cat_collections (user_id, cat_id, first_photo_id, first_discovered_at)
-      VALUES (v_admin_id, v_cat_id, v_photo_id, CURRENT_TIMESTAMP)
+      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
+      VALUES (v_admin_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, cat_id) DO NOTHING;
 
-      INSERT INTO user_cat_collections (user_id, cat_id, first_photo_id, first_discovered_at)
-      VALUES (v_user_id, v_cat_id, v_photo_id, CURRENT_TIMESTAMP)
+      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
+      VALUES (v_user_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, cat_id) DO NOTHING;
     END IF;
   END IF;

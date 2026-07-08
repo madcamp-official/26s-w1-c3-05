@@ -21,8 +21,8 @@ BEGIN
     VALUES (v_cat_id, 1, v_photo_id, 36.36715, 127.35895, 12, '2026-07-02T10:00:00+09:00')
     RETURNING id INTO v_sighting_id;
     
-    INSERT INTO user_cat_collections (user_id, cat_id, first_photo_id, first_discovered_at)
-    VALUES (1, v_cat_id, v_photo_id, '2026-07-02T10:00:00+09:00')
+    INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
+    VALUES (1, v_cat_id, v_photo_id, v_photo_id, '2026-07-02T10:00:00+09:00')
     ON CONFLICT (user_id, cat_id) DO NOTHING;
   ELSE
     SELECT id INTO v_sighting_id FROM cat_sightings WHERE cat_id = v_cat_id LIMIT 1;
@@ -57,8 +57,8 @@ BEGIN
     VALUES (v_cat_id, 1, v_photo_id, 36.36735, 127.36345, 4, '2026-07-02T11:15:00+09:00')
     RETURNING id INTO v_sighting_id;
     
-    INSERT INTO user_cat_collections (user_id, cat_id, first_photo_id, first_discovered_at)
-    VALUES (1, v_cat_id, v_photo_id, '2026-07-02T11:15:00+09:00')
+    INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
+    VALUES (1, v_cat_id, v_photo_id, v_photo_id, '2026-07-02T11:15:00+09:00')
     ON CONFLICT (user_id, cat_id) DO NOTHING;
   ELSE
     SELECT id INTO v_sighting_id FROM cat_sightings WHERE cat_id = v_cat_id LIMIT 1;
@@ -93,8 +93,8 @@ BEGIN
     VALUES (v_cat_id, 1, v_photo_id, 36.3733, 127.3615, 3, '2026-07-02T14:30:00+09:00')
     RETURNING id INTO v_sighting_id;
     
-    INSERT INTO user_cat_collections (user_id, cat_id, first_photo_id, first_discovered_at)
-    VALUES (1, v_cat_id, v_photo_id, '2026-07-02T14:30:00+09:00')
+    INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
+    VALUES (1, v_cat_id, v_photo_id, v_photo_id, '2026-07-02T14:30:00+09:00')
     ON CONFLICT (user_id, cat_id) DO NOTHING;
   ELSE
     SELECT id INTO v_sighting_id FROM cat_sightings WHERE cat_id = v_cat_id LIMIT 1;
