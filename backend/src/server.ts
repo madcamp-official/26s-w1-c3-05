@@ -28,7 +28,13 @@ const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173').split('
 app.use(helmet())
 app.use(cors({ origin: corsOrigins }))
 app.use(express.json({ limit: '2mb' }))
-app.use('/uploads', express.static('uploads'))
+// helmet's default Cross-Origin-Resource-Policy (same-origin) blocks the
+// frontend (a different origin) from loading these images at all — CORS
+// headers alone don't satisfy it, the browser drops the response client-side.
+app.use('/uploads', (_req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+  next()
+}, express.static('uploads'))
 app.use(morgan('dev'))
 app.get('/api/openapi.json', (_req, res) => res.json(openApiDocument))
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiDocument, { explorer: true }))
