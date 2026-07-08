@@ -1936,6 +1936,7 @@ function setCameraMode3d(mode) {
 function disable3DCameraMode(restoreCameraStream = true) {
   if (!window.is3DCameraActive) return;
   window.is3DCameraActive = false;
+  shutterBtn.disabled = false;
 
   // 1. 이벤트 해제
   map.off('move', update3DCameraTarget);
@@ -2169,6 +2170,10 @@ window.hideCameraView = () => {
     originalHideCameraView();
   }
 };
+
+window.addEventListener('catchme:3d-close', () => {
+  disable3DCameraMode(false);
+});
 
 // Shutter 클릭 이벤트 수신 (3D 캡처 및 업로드)
 window.addEventListener('catchme:3d-capture', async () => {

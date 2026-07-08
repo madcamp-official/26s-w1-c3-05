@@ -1072,6 +1072,7 @@
         }
 
         window.showCameraView = async () => {
+          shutter.disabled = false
           camera.hidden = false
           status.hidden = true
           fallback.hidden = false
@@ -1103,6 +1104,9 @@
         window.hideCameraView = () => {
           stopCameraStream()
           camera.hidden = true
+          if (window.is3DCameraActive) {
+            window.dispatchEvent(new CustomEvent('catchme:3d-close'))
+          }
         }
 
         document.querySelector('#camera-view-close').addEventListener('click', () => {
