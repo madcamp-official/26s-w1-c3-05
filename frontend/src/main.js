@@ -891,6 +891,7 @@ const newestPhotoFirst = (a, b) => Date.parse(b.createdAt) - Date.parse(a.create
 let pendingConfirmation = null
 let pendingCapturedPhoto = null
 let pendingNewCatId = null
+let lastCameraMode = 'real_camera'
 
 // ── 도감 신규 등록 연출 (지도 암전 → 오라 → 고양이 사진 → 발자국 → 3D 모델 → 미니 카드) ──
 const discoveryReveal = document.querySelector('#discovery-reveal')
@@ -2291,6 +2292,7 @@ window.addEventListener('catchme:3d-capture', async () => {
 // 뷰파인더에서 촬영했거나 기본 카메라/앨범에서 고른 사진을 공통 처리한다.
 async function processCapturedFile(file, catId = null, captureMode = 'real_camera') {
   if (!file) return
+  lastCameraMode = captureMode
   returnToMap()
 
   try {
@@ -3306,3 +3308,19 @@ fetch(`${API_BASE_URL}/api/health`)
   .catch((err) => {
     console.error('❌ 백엔드 서버 연동 실패:', err)
   })
+
+// 다시 촬영(Retake) 버튼 클릭 시, 3D 카메라 모드에서 촬영한 것이면 3D 카메라를 다시 실행한다.
+document.querySelectorAll('[data-capture-retake]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    if (lastCameraMode === 'virtual_3d') {
+      event.preventDefault()
+      event.stopPropagation()
+      const result = document.querySelector('#capture-result')
+      if (result) result.hidden = true
+      if (window.location.hash.startsWith('#capture-')) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      }
+      enable3DCameraMode()
+    }
+  })
+})
