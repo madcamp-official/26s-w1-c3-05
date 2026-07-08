@@ -120,7 +120,11 @@ export const updateUserProfile = async (userId: number, input: { nickname?: stri
   )
 }
 
-export const findActiveCats = () => many<CatRow>("SELECT * FROM cats WHERE status = 'active' ORDER BY COALESCE(last_seen_at, created_at) DESC")
+// 관리자 승인 전(candidate) 고양이도 발견한 사용자의 도감엔 바로 떠야 한다 —
+// /cats/:catId, /map/cat-actors 등 다른 곳은 이미 active+candidate를 함께 보여주는데
+// 여기만 active만 걸러서, 막 발견한 신규 고양이가 도감 목록(GET /cats)에서 통째로
+// 빠지고 "발견 0마리"로 보이는 버그가 있었다.
+export const findActiveCats = () => many<CatRow>("SELECT * FROM cats WHERE status IN ('active', 'candidate') ORDER BY COALESCE(last_seen_at, created_at) DESC")
 export const findCatById = (catId: number) => one<CatRow>('SELECT * FROM cats WHERE id = $1', [catId])
 
 export const findCatReferencePhotoUrls = (catIds: number[], limitPerCat = 5) => {
@@ -411,6 +415,17 @@ export const updatePhotoMatch = (photoId: number, input: { catId: number | null;
 
 export const findPhotoById = (photoId: number) => one<CatPhotoRow>('SELECT * FROM cat_photos WHERE id = $1', [photoId])
 
+export const applyRandomOffset = (latitude: number, longitude: number): { latitude: number; longitude: number } => {
+  const r = 6.0 + Math.random() * 4.0;
+  const theta = Math.random() * Math.PI * 2;
+  const latOffset = (r * Math.cos(theta)) / 111000;
+  const lngOffset = (r * Math.sin(theta)) / (111000 * Math.cos((latitude) * Math.PI / 180));
+  return {
+    latitude: latitude + latOffset,
+    longitude: longitude + lngOffset,
+  }
+}
+
 export const createSighting = async (input: { catId: number; userId: number; photoId: number; latitude: number; longitude: number; zoneId?: number | null; seenAt: string }) => {
   const result = await query<CatSightingRow>(
     `INSERT INTO cat_sightings (cat_id, user_id, photo_id, latitude, longitude, zone_id, seen_at)
@@ -423,13 +438,7 @@ export const createSighting = async (input: { catId: number; userId: number; pho
 
   // Shift placement coordinates by 6.0 - 10.0 meters in a random direction
   // so the cat/bush model doesn't overlap exactly with the user avatar.
-  const r = 6.0 + Math.random() * 4.0;
-  const theta = Math.random() * Math.PI * 2;
-  const latOffset = (r * Math.cos(theta)) / 111000;
-  const lngOffset = (r * Math.sin(theta)) / (111000 * Math.cos((input.latitude) * Math.PI / 180));
-
-  const placementLatitude = input.latitude + latOffset
-  const placementLongitude = input.longitude + lngOffset
+  const { latitude: placementLatitude, longitude: placementLongitude } = applyRandomOffset(input.latitude, input.longitude)
 
   await upsertPlacement({
     catId: input.catId,

@@ -1980,18 +1980,23 @@ async function openCatDetail(catId) {
     const cat = await getCat(catId)
     setDetailName(item?.customName || cat.name || cat.displayName || '???')
     fillDetailPhoto(cat.mainImageUrl, cat.pattern)
-    // /api/cats/:catId(catDetail)는 modelUrl/modelScale을 내려주지 않고 pattern만 준다
-    // (백엔드 backend/src/lib/serializers.ts의 catDetail 확인됨). 백엔드 catModels.ts와
-    // 같은 규칙을 미러링한 cat-models.js로 여기서 계산해 저장해둔다. 발견 못 한 고양이는
-    // pattern이 null로 오므로 3D로 보여줄 모델이 없다 — 기본 모델로 대충 채우지 않고
-    // detailCatModelUrl을 null로 두고 버튼도 숨긴다.
-    if (cat.isDiscovered && cat.pattern) {
-      const modelAsset = resolveCatModelAsset(cat.pattern)
-      detailCatModelUrl = modelAsset.assetUrl
-      detailCatModelScale = modelAsset.scale
-      // 사용자가 3D 버튼을 누르기 전에 미리 three.js CDN 모듈과 glb 파일을 백그라운드로
-      // 받아둔다. 버튼을 누른 시점엔 대부분 캐시에서 바로 뜬다.
-      preloadCat3DAssets(detailCatModelUrl)
+    // /api/cats/:catId(catDetail)는 modelUrl/modelScale을 이미 계산해 주므로,
+    // 먼저 이를 확인하여 가져온다. (관리자 승인 전 candidate 고양이는 pattern이 null일 수 있음).
+    // 만약 modelUrl이 비어있다면, pattern을 기반으로 클라이언트 매핑에서 찾아 폴백으로 처리한다.
+    if (cat.isDiscovered) {
+      if (cat.modelUrl) {
+        detailCatModelUrl = cat.modelUrl
+        detailCatModelScale = cat.modelScale ?? 1
+      } else if (cat.pattern) {
+        const modelAsset = resolveCatModelAsset(cat.pattern)
+        detailCatModelUrl = modelAsset.assetUrl
+        detailCatModelScale = modelAsset.scale
+      }
+      if (detailCatModelUrl) {
+        // 사용자가 3D 버튼을 누르기 전에 미리 three.js CDN 모듈과 glb 파일을 백그라운드로
+        // 받아둔다. 버튼을 누른 시점엔 대부분 캐시에서 바로 뜬다.
+        preloadCat3DAssets(detailCatModelUrl)
+      }
     }
     setDetail3DButtonAvailable(Boolean(detailCatModelUrl))
     if (catDetailDate) catDetailDate.textContent = cat.discoveredAt ? `${photoDateLabel(cat.discoveredAt)} 발견` : ''

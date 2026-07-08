@@ -119,12 +119,27 @@ export const mapCat = (placement: CatPlacementRow, isDiscovered: boolean) => {
 export const catActor = (placement: CatPlacementRow, isDiscovered: boolean, distanceMeters: number) => {
   const modelKey = resolveModelKey({ model_key: placement.model_key, pattern: placement.pattern })
   const asset = modelAsset(modelKey)
+
+  let latitude = Number(placement.latitude)
+  let longitude = Number(placement.longitude)
+
+  if (!isDiscovered) {
+    // Apply deterministic offset (e.g. 8 meters) based on catId to prevent overlapping with raw GPS coordinates
+    const catIdNum = Number(placement.cat_id)
+    const r = 8.0 // 8 meters
+    const theta = (catIdNum * 0.618033988749895 * 2 * Math.PI)
+    const latOffset = (r * Math.cos(theta)) / 111000
+    const lngOffset = (r * Math.sin(theta)) / (111000 * Math.cos(latitude * Math.PI / 180))
+    latitude += latOffset
+    longitude += lngOffset
+  }
+
   return {
     catId: String(placement.cat_id),
     displayType: isDiscovered ? 'discovered_cat' : 'undiscovered_recent',
     name: isDiscovered ? placement.name : null,
-    lat: placement.latitude,
-    lng: placement.longitude,
+    lat: latitude,
+    lng: longitude,
     distanceMeters: Number(distanceMeters.toFixed(2)),
     zoneId: placement.zone_id == null ? null : String(placement.zone_id),
     zoneName: placement.zone_name ?? null,

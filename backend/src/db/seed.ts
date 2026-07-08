@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { migrate, pool } from './database.js'
-import { createSighting, run, upsertCollection, upsertPlacement } from './repositories.js'
+import { applyRandomOffset, createSighting, run, upsertCollection, upsertPlacement } from './repositories.js'
 
 await migrate()
 
@@ -69,9 +69,12 @@ await upsertCollection({ userId: 1, catId: 1, photoId: 1, seenAt: '2026-07-01T12
 await upsertCollection({ userId: 1, catId: 3, photoId: 4, seenAt: '2026-06-26T19:45:00+09:00' })
 await upsertCollection({ userId: 3, catId: 2, photoId: 2, seenAt: '2026-07-01T18:02:00+09:00' })
 
-await upsertPlacement({ catId: 1, sourceSightingId: 1, latitude: 36.3726, longitude: 127.3603, zoneId: 1 })
-await upsertPlacement({ catId: 2, sourceSightingId: 2, latitude: 36.3717, longitude: 127.3611, zoneId: 2 })
-await upsertPlacement({ catId: 3, sourceSightingId: 3, latitude: 36.3734, longitude: 127.3615, zoneId: 3 })
+  const offset1 = applyRandomOffset(36.3726, 127.3603)
+  await upsertPlacement({ catId: 1, sourceSightingId: 1, latitude: offset1.latitude, longitude: offset1.longitude, zoneId: 1 })
+  const offset2 = applyRandomOffset(36.3717, 127.3611)
+  await upsertPlacement({ catId: 2, sourceSightingId: 2, latitude: offset2.latitude, longitude: offset2.longitude, zoneId: 2 })
+  const offset3 = applyRandomOffset(36.3734, 127.3615)
+  await upsertPlacement({ catId: 3, sourceSightingId: 3, latitude: offset3.latitude, longitude: offset3.longitude, zoneId: 3 })
 await run("UPDATE cat_placements SET surface = 'roof', anchor_key = 'roof_center', height_offset_meters = 12, movement_radius_meters = 5, animation_key = 'sit' WHERE cat_id = 1")
 await run("UPDATE cat_placements SET surface = 'ground', anchor_key = 'entrance', height_offset_meters = 0, movement_radius_meters = 7, animation_key = 'walk' WHERE cat_id = 2")
 await run("UPDATE cat_placements SET surface = 'roof', anchor_key = 'roof_edge', height_offset_meters = 10, movement_radius_meters = 4, animation_key = 'sleep' WHERE cat_id = 3")
