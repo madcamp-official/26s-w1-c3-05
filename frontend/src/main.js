@@ -1914,8 +1914,10 @@ const FP_BODY_CLIP_HEIGHT_M = 5.35;
 const FP_MIN_PITCH = 6; // 0에 가까울수록 발밑(=미쿠 다리)을 내려다본다
 const FP_MAX_PITCH = 85; // MapLibre 하드 리밋(map maxPitch도 85)
 // 눈높이를 고정하려면 pitch를 눕히고 화각을 좁힐수록 더 큰 zoom이 필요하다.
-// (발밑을 보며 최대 확대하면 z≈25까지 올라간다. 기본 maxZoom 22면 카메라가 눈높이 위로 뜬다.)
-const FP_MAX_ZOOM = 26;
+// (기본 maxZoom 22면 카메라가 눈높이 위로 뜬다.) 최악의 경우는 "발밑을 보며 최대 확대":
+// FP_ZOOM_MAX=7(화각 5.27°) · pitch 6° · 세로로 긴 화면(1200px)에서 z≈26.9가 필요하다.
+// 여기 걸리면 zoomForEyeHeight가 clamp돼 카메라가 눈높이 위로 떠오른다.
+const FP_MAX_ZOOM = 28;
 
 // 셀카: 카메라가 미쿠의 뻗은 손 끝에 달려 있다고 가정한다.
 const SELFIE_ARM_DEFAULT_M = 3.4; // 이 스케일(어깨 ≈ 5.6m)에서 뻗은 팔 길이 ≒ 3.4m
@@ -1927,7 +1929,7 @@ const SELFIE_MIN_PITCH = 58;
 const SELFIE_MAX_PITCH = 85;
 
 const FP_ZOOM_MIN = 1; // 기본 화각보다 넓히면 원근 왜곡이 심해 1배를 하한으로 둔다
-const FP_ZOOM_MAX = 3.5;
+const FP_ZOOM_MAX = 7; // 7배(수직 화각 36.87° → 5.27°). FP_MAX_ZOOM을 함께 올려야 한다.
 const SELFIE_ZOOM_MIN = 0.6; // 팔을 쭉 뻗은 상태(멀리)
 const SELFIE_ZOOM_MAX = 2; // 카메라를 얼굴 쪽으로 당긴 상태
 
