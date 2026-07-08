@@ -48,6 +48,9 @@
   <tr><td></td><td>로드뷰</td><td>아바타 시점으로 카이스트 캠퍼스를 둘러볼 수 있습니다. 사람들이 촬영한 고양이들이 3D 모델로 나타납니다.</td></tr>
   <tr><td></td><td>촬영</td><td>고양이 사진을 촬영합니다</td></tr>
   <tr><td></td><td>내 고양이</td><td>내가 찍은 고양이 사진들을 둘러봅니다</td></tr>
+  <tr><td></td><td>사이드바</td><td>사이드바 메뉴를 엽니다</td></tr>
+  <tr><td></td><td>BGM</td><td>BGM ON/OFF 버트입니다</td></tr>
+
   <tr><td nowrap>사이드바</td><td>고양이 도감</td><td>발견한 고양이 도감을 볼 수 있습니다</td></tr>
   <tr><td></td><td>도움말</td><td>사용 설명서입니다</td></tr>
   <tr><td></td><td>설정</td><td>닉네임과 프로필 사진을 변경할 수 있습니다.</td></tr>
