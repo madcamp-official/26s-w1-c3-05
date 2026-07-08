@@ -409,12 +409,23 @@ map.on('move', declutterBuildingMarkers)
 
 // 이름/구역 정보 카드 마커는 없앴다 — 사용자가 직접 찍은 사진 마커(photo-marker)만
 // 보여주고, 그 마커를 3D 고양이 모델 위로 띄우는 데 이 오프셋을 재사용한다.
+// 지도 시점 중심(카메라 초점)에서 일정 거리 이상 멀어진 마커는 화면에 나타나지 않도록 가린다.
 function updateCatMarkerPresentation() {
   const offset = catMarkerOffset()
-  photoMarkerGroups.forEach((group) => group.markerInstance?.setOffset(offset))
+  const center = map.getCenter()
+  const centerLngLat = [center.lng, center.lat]
+
+  photoMarkerGroups.forEach((group) => {
+    if (!group.markerInstance) return
+    group.markerInstance.setOffset(offset)
+
+    const distance = distanceInMeters(centerLngLat, group.position)
+    const isVisible = distance <= 350
+    group.element.style.display = isVisible ? '' : 'none'
+  })
 }
 
-map.on('zoom', updateCatMarkerPresentation)
+map.on('move', updateCatMarkerPresentation)
 
 // Web Mercator 축척: 특정 위도·줌에서 화면 1px가 실제 몇 미터인지.
 function metersPerPixelAtZoom(zoom, latitude) {
