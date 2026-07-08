@@ -325,13 +325,14 @@ export const createPhoto = async (input: {
   cropImageUrl?: string | null
   detectionBbox?: DetectionBbox | null
   qualityScore?: number | null
+  captureSource?: string
 }) => {
   const result = await query<CatPhotoRow>(
     `INSERT INTO cat_photos
       (user_id, cat_id, image_url, latitude, longitude, zone_id, taken_at, is_cat,
        cat_detection_confidence, cat_identification_confidence, is_gallery_visible, identification_status,
-       crop_image_url, detection_bbox_json, quality_score)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       crop_image_url, detection_bbox_json, quality_score, capture_source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING *`,
     [
       input.userId,
@@ -349,6 +350,7 @@ export const createPhoto = async (input: {
       input.cropImageUrl ?? null,
       input.detectionBbox ? JSON.stringify(input.detectionBbox) : null,
       input.qualityScore ?? null,
+      input.captureSource ?? 'real_camera',
     ],
   )
   return result.rows[0]
@@ -682,4 +684,8 @@ export const findRankings = () =>
      ORDER BY discovered_count DESC, u.created_at ASC`,
   )
 
+export const findPlacementByCatId = (catId: number) =>
+  one<CatPlacementRow>('SELECT * FROM cat_placements WHERE cat_id = $1', [catId])
+
 export const nowIso = () => new Date().toISOString()
+

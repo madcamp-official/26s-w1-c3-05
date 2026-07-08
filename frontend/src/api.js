@@ -49,5 +49,13 @@ export const getGallery = ({ catId, page, limit } = {}) => {
 export const getProfile = () => requestJson('/api/profile/me')
 export const updateProfile = (payload) => requestJson('/api/profile/me', jsonBody('PATCH', payload))
 
+// 기기에서 고른 사진을 프로필 이미지로 업로드한다. Content-Type은 브라우저가
+// multipart 경계(boundary)와 함께 자동으로 붙여줘야 하므로 직접 지정하지 않는다.
+export const uploadProfileImage = (file) => {
+  const body = new FormData()
+  body.append('image', file)
+  return requestJson('/api/profile/me/image', { method: 'POST', body })
+}
+
 // Sighting
 export const getMySightings = () => requestJson('/api/sightings/me')

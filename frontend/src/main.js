@@ -1,6 +1,6 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { addFlowerDecorations } from './FlowerDecorations.js'
+import { addFlowerDecorations, FLOWER_DECORATION_CONFIG } from './FlowerDecorations.js'
 import { createAnimatedModelLayer } from './model-layer.js'
 import { openCat3DViewer, preloadCat3DAssets, createMiniCatModelPreview } from './cat-3d-viewer.js'
 import { resolveCatModelAsset } from './cat-models.js'
@@ -19,7 +19,11 @@ import {
   setCatNickname,
   setFavorite,
   updateProfile,
+  uploadProfileImage,
 } from './api.js'
+import { initBgm } from './bgm.js'
+
+initBgm()
 
 // 아직 GPS를 못 받았을 때 지도 조회에 쓰는 기본 위치 (KAIST 중앙도서관 부근).
 const DEFAULT_QUERY_POSITION = { lat: 36.3727, lng: 127.3602 }
@@ -56,7 +60,7 @@ const map = new maplibregl.Map({
   // 모뉴먼트 밸리 풍으로 변환한 커스텀 스타일 (public/monument-style.json)
   style: '/monument-style.json',
   ...OVERVIEW_VIEW,
-  maxPitch: 75,
+  maxPitch: 85,
   minZoom: 13.9, // 캠퍼스 밖이 훤히 보일 만큼 축소되지 않게
   // 캠퍼스를 크게 벗어나지 못하게 제한 (서쪽 기숙사 지역까지 여유 포함)
   maxBounds: [
@@ -64,9 +68,12 @@ const map = new maplibregl.Map({
     [127.378, 36.385], // 북동쪽 모서리
   ],
   attributionControl: { compact: true },
+  preserveDrawingBuffer: true,
 })
 
-const animatedModelLayer = createAnimatedModelLayer(map)
+const animatedModelLayer = createAnimatedModelLayer(map) // TEMP_DEBUG
+window.__map = map // TEMP_DEBUG
+window.__layer = animatedModelLayer // TEMP_DEBUG
 const mockBuildingMarkers = new Map()
 const MOCK_MAP_MODE = false
 
@@ -164,7 +171,13 @@ function initScene() {
   sceneInited = true
   applyTextures()
   try {
-    addFlowerDecorations(map)
+    // 아바타(GPS) 위치는 이 시점(첫 styledata/load)엔 아직 없을 수 있어 markerLngLat()의
+    // 기본 폴백(DEFAULT_QUERY_POSITION)이 기준점이 된다 — 밀도는 로드 시 1회만 계산되고
+    // 이후 아바타가 움직여도 다시 계산하지 않는다(의도된 단순화).
+    addFlowerDecorations(map, {
+      ...FLOWER_DECORATION_CONFIG,
+      densityBias: { center: markerLngLat(), falloffRadiusMeters: 110, baseline: 0.05 },
+    })
   } catch (error) {
     console.warn('꽃 장식 초기화 실패:', error)
   }
@@ -222,6 +235,12 @@ const BUILDING_LABEL_MAX_DISTANCE_FAR_METERS = 900 // FOLLOW_MIN_ZOOM(멀리 축
 // 미쿠 기준 방위각 차이가 이 안이면 "한 직선 상"으로 보고, 그중 가장 가까운
 // 캣타워 하나만 이름표를 남긴다(뒤에 가려진 건물까지 이름이 겹쳐 뜨지 않게).
 const BUILDING_LABEL_CLUSTER_ANGLE_DEG = 15
+
+// map.project()는 카메라 뒤쪽 점도 원근 나누기(x/w, y/w)를 그냥 적용해버려서, w가
+// 음수면 부호가 뒤집혀 화면 안의 그럴듯한 좌표(가끔은 하늘 쪽)로 튀어나온다. 화면
+// 마진 체크만으로는 이 "카메라 뒤라서 뒤집힌" 값을 못 걸러내므로, 카메라가 실제로
+// 그 방향을 보고 있는지(시야각 안인지)를 방위각으로 따로 확인해서 걸러낸다.
+const BUILDING_LABEL_FOV_HALF_ANGLE_DEG = 65
 
 // 마커는 anchor: 'bottom'이라 타워 밑동(지면 좌표)에 그대로 두면 3D 타워 몸체를
 // 통째로 가려버린다. 타워 위로 띄워서 이름표처럼 보이게 한다. 로드뷰로 다가갈수록
@@ -340,6 +359,7 @@ function declutterBuildingMarkers() {
   const screenMarginX = clientWidth * 0.6
   const screenMarginY = clientHeight * 0.6
   const maxDistance = buildingLabelMaxDistance()
+  const cameraBearing = map.getBearing()
 
   const candidates = []
   for (const marker of allMarkers) {
@@ -350,13 +370,19 @@ function declutterBuildingMarkers() {
     // 모델도 없이 이름표만 하늘에 둥둥 뜬 것처럼 보인다.
     if (distance > maxDistance) continue
 
+    const bearing = bearingBetween(origin, [lngLat.lng, lngLat.lat])
+    // 카메라가 보고 있는 방향(시야각) 밖이면 제외 — 안 그러면 카메라 뒤쪽 점이
+    // map.project()의 원근 나누기에서 부호가 뒤집혀(w<0) 화면 마진 체크를 통과한
+    // 채로 엉뚱한 좌표(가끔 하늘 쪽)에 이름표가 튀어나온다.
+    if (angleDifference(cameraBearing, bearing) > BUILDING_LABEL_FOV_HALF_ANGLE_DEG) continue
+
     // 지평선 부근에서 project()가 발산하면 여기서 걸러진다 — 정상 범위면 뷰포트
     // 크기의 1.6배 이내 값이 나오고, 발산하면 수천~수만 px로 튀어서 바로 빠진다.
     const { x, y } = map.project(lngLat)
     if (x < -screenMarginX || x > clientWidth + screenMarginX) continue
     if (y < -screenMarginY || y > clientHeight + screenMarginY) continue
 
-    candidates.push({ marker, distance, bearing: bearingBetween(origin, [lngLat.lng, lngLat.lat]) })
+    candidates.push({ marker, distance, bearing })
   }
 
   // 같은 방향(각도 차 15도 이내)에 나보다 더 가까운 후보가 있으면 가려진 걸로 보고 뺀다.
@@ -542,9 +568,13 @@ function startPositionTracking() {
       userPosUpdatedAt = Date.now()
       animatedModelLayer.setAvatarPosition(userPos)
       refetchMapActorsForGps(userPos)
-      // 마커 시점일 때는 카메라도 내 위치를 따라감.
-      // GPS 좌표가 튀어도 화면이 순간이동하지 않게 부드럽게 이동한다.
-      if (isFollowing && !isTransitioning) {
+      // 1인칭 카메라는 center가 "아바타 앞쪽 지면"이라 easeTo(center=내 위치)를 태우면
+      // 시점이 통째로 3인칭으로 돌아가버린다. 눈높이 카메라를 새 위치로 다시 계산한다.
+      if (window.is3DCameraActive) {
+        applyFirstPersonCamera()
+      } else if (isFollowing && !isTransitioning) {
+        // 마커 시점일 때는 카메라도 내 위치를 따라감.
+        // GPS 좌표가 튀어도 화면이 순간이동하지 않게 부드럽게 이동한다.
         map.easeTo({ center: userPos, duration: 800, essential: true })
       }
     },
@@ -1498,11 +1528,15 @@ function renderCaptureResponse(data, imageUrl) {
   }
 }
 
-async function uploadSighting(file, position) {
+async function uploadSighting(file, position, catId = null, captureMode = 'real_camera') {
   const formData = new FormData()
   formData.set('image', file)
   formData.set('longitude', String(position[0]))
   formData.set('latitude', String(position[1]))
+  if (catId) {
+    formData.set('catId', String(catId))
+  }
+  formData.set('captureMode', captureMode)
 
   const response = await authFetch('/api/sightings', {
     method: 'POST',
@@ -1588,20 +1622,633 @@ cameraBtn.addEventListener('click', () => {
   }
 })
 
+// ─────────────────────────────────────────────
+// 3D 가상 카메라 기능 구현 (1인칭 모드)
+// ─────────────────────────────────────────────
+// FreeCameraOptions는 Mapbox GL JS 전용 API라 MapLibre에는 없다(getFreeCameraOptions가
+// undefined → 호출 즉시 TypeError). 대신 MapLibre 표준 카메라만으로 1인칭을 만든다:
+// MapLibre 카메라는 언제나 지면 위의 center를 바라보므로,
+//   ① center를 아바타 앞쪽 지면(eyeHeight * tan(pitch)만큼 전방)으로 밀고
+//   ② 카메라-center 거리가 눈높이를 만들도록 zoom을 역산
+// 하면 눈이 정확히 아바타 머리 위치에 놓이고 pitch/bearing이 그대로 시선이 된다.
+window.is3DCameraActive = false;
+let currentTargetCatId = null;
+let mapControlsBackup = null;
+let mapCameraBackup = null;
+let isLookingAround = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+let currentBearing = 0;
+let currentPitch = 78;
+let cameraMode3d = 'first-person'; // 'first-person' | 'selfie'
+
+// 근접(follow) 스케일에서 미쿠 스켈레톤의 실측 높이(브라우저에서 본 월드 좌표):
+// FootL/R 0.4m · Hips 3.42m · Head 6.30m. 모델 전체 높이(≈9m)를 눈높이로 쓰면
+// 카메라가 머리카락 위로 떠버린다 — 반드시 Head 본 기준으로 잡을 것.
+const AVATAR_HEAD_HEIGHT_M = 6.3;
+const FP_EYE_HEIGHT_M = AVATAR_HEAD_HEIGHT_M + 0.4; // 머리 안쪽, 눈 언저리
+// 카메라는 머리 "안"에 둔다. 얼굴 앞으로 조금이라도 빼면 코앞의 얼굴이 화면을 가득 채운다.
+const FP_EYE_FORWARD_M = 0;
+// 눈보다 조금 아래(어깨 위)를 잘라낸다. 어깨/목/머리는 렌즈 코앞이라 그대로 두면 아래를
+// 내려다볼 때 화면 절반을 덮어 정작 다리가 안 보인다. FPS가 자기 캐릭터를 그리는 방식대로
+// 잘라내면 가슴 아래·치마·다리·발만 남는다. (Head 본 6.30m, 어깨 ≈ 5.6m, Hips 3.42m)
+const FP_BODY_CLIP_HEIGHT_M = 5.35;
+const FP_MIN_PITCH = 6; // 0에 가까울수록 발밑(=미쿠 다리)을 내려다본다
+const FP_MAX_PITCH = 85; // MapLibre 하드 리밋(map maxPitch도 85)
+// 눈높이를 고정하려면 pitch를 눕히고 화각을 좁힐수록 더 큰 zoom이 필요하다.
+// (발밑을 보며 최대 확대하면 z≈25까지 올라간다. 기본 maxZoom 22면 카메라가 눈높이 위로 뜬다.)
+const FP_MAX_ZOOM = 26;
+
+// 셀카: 카메라가 미쿠의 뻗은 손 끝에 달려 있다고 가정한다.
+const SELFIE_ARM_DEFAULT_M = 3.4; // 이 스케일(어깨 ≈ 5.6m)에서 뻗은 팔 길이 ≒ 3.4m
+const SELFIE_ARM_MIN_M = 1.9;
+const SELFIE_ARM_MAX_M = 6.2;
+const SELFIE_EYE_HEIGHT_M = FP_EYE_HEIGHT_M + 0.5; // 눈보다 살짝 위에서 내려찍는 셀카 각도
+const SELFIE_ROLL_DEG = -5.5; // 손으로 든 카메라 특유의 미세한 기울기
+const SELFIE_MIN_PITCH = 58;
+const SELFIE_MAX_PITCH = 85;
+
+const FP_ZOOM_MIN = 1; // 기본 화각보다 넓히면 원근 왜곡이 심해 1배를 하한으로 둔다
+const FP_ZOOM_MAX = 3.5;
+const SELFIE_ZOOM_MIN = 0.6; // 팔을 쭉 뻗은 상태(멀리)
+const SELFIE_ZOOM_MAX = 2; // 카메라를 얼굴 쪽으로 당긴 상태
+
+let fpFovBaseDeg = 36.87; // 진입 시점의 기본 수직 화각
+let fpZoom = 1; // 1인칭 확대 배율 (화각을 좁혀서 당긴다)
+let selfieZoom = 1; // 셀카 확대 배율 (팔 길이를 줄여서 당긴다)
+
+const EARTH_CIRCUMFERENCE_M = 40075016.686;
+const ZERO_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
+const METERS_PER_DEG_LAT = 110574;
+
+function offsetLngLat([lng, lat], bearingDeg, distanceM) {
+  const bearingRad = (bearingDeg * Math.PI) / 180;
+  const metersPerDegLng = 111320 * Math.cos((lat * Math.PI) / 180);
+  return [
+    lng + (distanceM * Math.sin(bearingRad)) / metersPerDegLng,
+    lat + (distanceM * Math.cos(bearingRad)) / METERS_PER_DEG_LAT,
+  ];
+}
+
+// MapLibre transform: 눈높이(px) = cameraToCenterDistance * cos(pitch), 그리고
+// pixelsPerMeter = worldSize / (지구둘레 * cos(lat)), worldSize = 512 * 2^zoom.
+// 눈높이를 eyeHeightM으로 고정하는 zoom을 이 관계에서 역산한다.
+function zoomForEyeHeight(pitchDeg, lat, eyeHeightM) {
+  const transform = map.transform;
+  // cameraToCenterDistance = 0.5 / tan(fov/2) * canvasHeight. getter가 있으면 그대로 쓰고,
+  // 내부 API라 사라질 수 있으니 fov(도)와 캔버스 높이로 직접 계산하는 경로를 남겨둔다.
+  const fovDeg = transform?.fov ?? map.getVerticalFieldOfView();
+  const camToCenterPx =
+    transform?.cameraToCenterDistance ??
+    (0.5 / Math.tan((fovDeg * Math.PI) / 360)) * map.getCanvas().clientHeight;
+  const pixelsPerMeter = (camToCenterPx * Math.cos((pitchDeg * Math.PI) / 180)) / eyeHeightM;
+  const worldSize = pixelsPerMeter * EARTH_CIRCUMFERENCE_M * Math.cos((lat * Math.PI) / 180);
+  return Math.log2(worldSize / 512);
+}
+
+// 눈 위치(지면 좌표 + 높이)와 시선(bearing/pitch)을 MapLibre 표준 카메라로 옮긴다.
+// MapLibre 카메라는 언제나 지면 위의 center를 바라보므로 center = eye + eyeHeight*tan(pitch) 전방.
+function applyVirtualCamera({ eye, eyeHeightM, bearing, pitch, roll = 0 }) {
+  const pitchRad = (pitch * Math.PI) / 180;
+  const center = offsetLngLat(eye, bearing, eyeHeightM * Math.tan(pitchRad));
+  const zoom = clamp(zoomForEyeHeight(pitch, eye[1], eyeHeightM), map.getMinZoom(), map.getMaxZoom());
+
+  map.jumpTo({
+    center,
+    bearing,
+    pitch,
+    roll,
+    zoom,
+    // 팔로우 시점에서 넘어오면 padding.top이 화면 절반이라 조준점과 카메라 중심이 어긋난다.
+    padding: ZERO_PADDING,
+  });
+  map.triggerRepaint();
+}
+
+// 현재 모드(1인칭/셀카) + bearing/pitch/zoom 상태를 카메라와 미쿠 방향에 즉시 반영
+function apply3DCamera() {
+  if (!window.is3DCameraActive) return;
+  const avatar = markerLngLat();
+
+  if (cameraMode3d === 'selfie') {
+    // 카메라는 미쿠 앞(=시선 반대쪽) 팔 길이만큼 떨어진 손 끝에 있고, 미쿠는 그 카메라를 마주본다.
+    // 바깥에서 보는 시점이므로 원래의 DoubleSide 머티리얼로 되돌린다.
+    const armM = clamp(SELFIE_ARM_DEFAULT_M / selfieZoom, SELFIE_ARM_MIN_M, SELFIE_ARM_MAX_M);
+    const facing = (currentBearing + 180) % 360;
+    animatedModelLayer.setAvatarFacing(facing);
+    applyVirtualCamera({
+      eye: offsetLngLat(avatar, facing, armM),
+      eyeHeightM: SELFIE_EYE_HEIGHT_M,
+      bearing: currentBearing,
+      pitch: currentPitch,
+      roll: SELFIE_ROLL_DEG,
+    });
+    return;
+  }
+
+  // 1인칭: 눈은 미쿠의 머리 안, 미쿠는 카메라가 보는 방향을 함께 바라본다.
+  animatedModelLayer.setAvatarFacing(currentBearing);
+  applyVirtualCamera({
+    eye: offsetLngLat(avatar, currentBearing, FP_EYE_FORWARD_M),
+    eyeHeightM: FP_EYE_HEIGHT_M,
+    bearing: currentBearing,
+    pitch: currentPitch,
+    roll: 0,
+  });
+}
+
+// GPS 콜백/resize 리스너가 참조하는 이름은 유지한다.
+const applyFirstPersonCamera = apply3DCamera;
+
+const cameraToggle3d = document.querySelector('#camera-toggle-3d');
+const cameraToggleSelfie = document.querySelector('#camera-toggle-selfie');
+const cameraZoomPanel = document.querySelector('#camera-zoom');
+const cameraZoomLevel = document.querySelector('#camera-zoom-level');
+const cameraCrosshair = document.querySelector('#camera-crosshair');
+const cameraTargetLabel = document.querySelector('#camera-target-label');
+const cameraView = document.querySelector('#camera-view');
+const shutterBtn = document.querySelector('#camera-shutter');
+
+// ── 확대/축소 ────────────────────────────────────────
+// 1인칭은 화각(FOV)을 좁혀 당기고, 셀카는 팔을 접어 카메라를 얼굴 쪽으로 당긴다.
+// 눈높이 zoom은 zoomForEyeHeight가 매번 다시 풀어주므로 두 방식 모두 시점을 깨지 않는다.
+function currentZoomFactor() {
+  return cameraMode3d === 'selfie' ? selfieZoom : fpZoom;
+}
+
+function setZoomFactor(factor) {
+  if (cameraMode3d === 'selfie') {
+    selfieZoom = clamp(factor, SELFIE_ZOOM_MIN, SELFIE_ZOOM_MAX);
+  } else {
+    fpZoom = clamp(factor, FP_ZOOM_MIN, FP_ZOOM_MAX);
+    map.setVerticalFieldOfView(fpFovBaseDeg / fpZoom);
+  }
+  if (cameraZoomLevel) cameraZoomLevel.textContent = `${currentZoomFactor().toFixed(1)}×`;
+  apply3DCamera();
+}
+
+function nudgeZoom(multiplier) {
+  setZoomFactor(currentZoomFactor() * multiplier);
+}
+
+// Map controls backup & disable
+function disableMapControls() {
+  mapControlsBackup = {
+    dragPan: map.dragPan.isEnabled(),
+    scrollZoom: map.scrollZoom.isEnabled(),
+    boxZoom: map.boxZoom.isEnabled(),
+    doubleClickZoom: map.doubleClickZoom.isEnabled(),
+    touchZoomRotate: map.touchZoomRotate.isEnabled(),
+    keyboard: map.keyboard?.isEnabled() ?? false,
+  };
+  map.dragPan.disable();
+  map.scrollZoom.disable();
+  map.boxZoom.disable();
+  map.doubleClickZoom.disable();
+  map.touchZoomRotate.disable();
+  if (map.keyboard) map.keyboard.disable();
+}
+
+// Map controls restore
+function restoreMapControls() {
+  if (!mapControlsBackup) return;
+  if (mapControlsBackup.dragPan) map.dragPan.enable();
+  if (mapControlsBackup.scrollZoom) map.scrollZoom.enable();
+  if (mapControlsBackup.boxZoom) map.boxZoom.enable();
+  if (mapControlsBackup.doubleClickZoom) map.doubleClickZoom.enable();
+  if (mapControlsBackup.touchZoomRotate) map.touchZoomRotate.enable();
+  if (mapControlsBackup.keyboard && map.keyboard) map.keyboard.enable();
+  mapControlsBackup = null;
+}
+
+// 3D 카메라 모드 활성화
+function enable3DCameraMode() {
+  window.is3DCameraActive = true;
+  currentTargetCatId = null;
+
+  // 1. 카메라 스트림 종료
+  window.stopCameraStream?.();
+
+  // 2. 지도 컨트롤 및 카메라 백업
+  disableMapControls();
+  mapCameraBackup = {
+    center: map.getCenter(),
+    zoom: map.getZoom(),
+    pitch: map.getPitch(),
+    bearing: map.getBearing(),
+    roll: map.getRoll(),
+    padding: map.getPadding(),
+    maxZoom: map.getMaxZoom(),
+    fov: map.getVerticalFieldOfView(),
+    isFollowing: isFollowing,
+  };
+
+  // 눈높이 8.3m는 z≈21을 요구하고, pitch를 눕히거나 화각을 좁힐수록 더 큰 zoom이 필요하다.
+  // 기본 maxZoom(22)에 걸리면 카메라가 눈높이보다 위로 떠서 다시 3인칭처럼 보인다.
+  map.setMaxZoom(FP_MAX_ZOOM);
+  fpFovBaseDeg = mapCameraBackup.fov;
+  cameraMode3d = 'first-person';
+  fpZoom = 1;
+  selfieZoom = 1;
+
+  // 3. UI 및 클래스 설정
+  document.body.classList.add('in-3d-camera-mode');
+  cameraView.classList.add('camera-view--3d');
+  cameraToggle3d.classList.add('is-active');
+  cameraCrosshair.hidden = false;
+  cameraTargetLabel.hidden = false;
+  cameraToggleSelfie.hidden = true;
+  cameraZoomPanel.hidden = false;
+  syncSelfieToggleUi();
+
+  // 4. 지도 1인칭 카메라 이동 및 Three.js 활성화
+  const userCoords = markerLngLat();
+  // 모델 레이어는 follow 스케일(고양이·건물이 보이는 근접 시점)로 두되, 앱의 isFollowing은
+  // 반드시 꺼둔다. 켜두면 GPS easeTo와 한손가락 스와이프 궤도 회전(applyOrbit → jumpTo)이
+  // 1인칭 카메라를 매번 3인칭으로 덮어쓴다.
+  isFollowing = false;
+  isTransitioning = false;
+  animatedModelLayer.setFollowing(true);
+  // 미쿠는 계속 그린다. 카메라가 머리 안에 있고 뒷면이 컬링되므로 수평을 볼 땐 아무것도
+  // 가리지 않고, 아래를 볼수록 몸통과 다리가 화면에 들어온다.
+  animatedModelLayer.setAvatarVisible(true);
+  animatedModelLayer.setAvatarBackfaceCulling(true);
+  animatedModelLayer.setAvatarClipHeight(FP_BODY_CLIP_HEIGHT_M);
+
+  // 주변 고양이 검색 후 바라보기 초기화
+  let nearestCat = null;
+  let minDistance = Infinity;
+  for (const actor of (animatedModelLayer.actors || [])) {
+    if (actor.modelType === 'bush') continue;
+    const dist = distanceInMeters(userCoords, [Number(actor.lng), Number(actor.lat)]);
+    if (dist < minDistance) {
+      minDistance = dist;
+      nearestCat = actor;
+    }
+  }
+
+  currentBearing = ((nearestCat
+    ? bearingBetween(userCoords, [Number(nearestCat.lng), Number(nearestCat.lat)])
+    : mapCameraBackup.bearing) + 360) % 360;
+  currentPitch = 78;
+
+  // 1인칭 시점 적용
+  setZoomFactor(1); // 화각 초기화 + 배율 라벨 갱신 + apply3DCamera()
+
+  // 조준점 업데이트 시작
+  update3DCameraTarget();
+  map.on('move', update3DCameraTarget);
+  // 캔버스 높이가 바뀌면 cameraToCenterDistance가 달라져 눈높이가 틀어진다.
+  map.on('resize', applyFirstPersonCamera);
+}
+
+// ── 셀카 모드 ────────────────────────────────────────
+function syncSelfieToggleUi() {
+  const isSelfie = cameraMode3d === 'selfie';
+  cameraToggleSelfie.classList.toggle('is-active', isSelfie);
+  cameraToggleSelfie.setAttribute('aria-pressed', String(isSelfie));
+}
+
+function setCameraMode3d(mode) {
+  if (!window.is3DCameraActive || cameraMode3d === mode) return;
+  cameraMode3d = mode;
+
+  if (mode === 'selfie') {
+    // 셀카는 팔 길이로 당기므로 화각은 기본값으로 되돌린다(좁은 화각 + 근접 = 얼굴만 꽉 참).
+    map.setVerticalFieldOfView(fpFovBaseDeg);
+    currentPitch = clamp(currentPitch, SELFIE_MIN_PITCH, SELFIE_MAX_PITCH);
+    // 셀카는 미쿠를 통째로 찍으니 잘라낸 상반신과 컬링을 되돌린다.
+    animatedModelLayer.setAvatarBackfaceCulling(false);
+    animatedModelLayer.setAvatarClipHeight(null);
+  } else {
+    map.setVerticalFieldOfView(fpFovBaseDeg / fpZoom);
+    currentPitch = clamp(currentPitch, FP_MIN_PITCH, FP_MAX_PITCH);
+    animatedModelLayer.setAvatarBackfaceCulling(true);
+    animatedModelLayer.setAvatarClipHeight(FP_BODY_CLIP_HEIGHT_M);
+  }
+
+  syncSelfieToggleUi();
+  if (cameraZoomLevel) cameraZoomLevel.textContent = `${currentZoomFactor().toFixed(1)}×`;
+  apply3DCamera();
+}
+
+// 3D 카메라 모드 비활성화
+function disable3DCameraMode(restoreCameraStream = true) {
+  if (!window.is3DCameraActive) return;
+  window.is3DCameraActive = false;
+
+  // 1. 이벤트 해제
+  map.off('move', update3DCameraTarget);
+  map.off('resize', applyFirstPersonCamera);
+  isLookingAround = false;
+  pinchStartDist3d = 0;
+  cameraMode3d = 'first-person';
+
+  // 2. 지도 컨트롤 및 카메라 복구
+  restoreMapControls();
+  if (mapCameraBackup) {
+    isFollowing = mapCameraBackup.isFollowing;
+    animatedModelLayer.setFollowing(isFollowing);
+    animatedModelLayer.setAvatarVisible(true);
+    animatedModelLayer.setAvatarFacing(null); // 지도 방위를 따라가는 기본 방향으로 복귀
+    animatedModelLayer.setAvatarBackfaceCulling(false);
+    animatedModelLayer.setAvatarClipHeight(null);
+    // 화각/롤은 easeTo가 건드리지 않으므로 별도로 되돌린다.
+    map.setVerticalFieldOfView(mapCameraBackup.fov);
+    // 1인칭 zoom(≈21)은 원래 maxZoom을 넘으므로, easeTo보다 먼저 되돌리면 중간에 튄다.
+    map.easeTo({
+      center: mapCameraBackup.center,
+      zoom: mapCameraBackup.zoom,
+      pitch: mapCameraBackup.pitch,
+      bearing: mapCameraBackup.bearing,
+      roll: mapCameraBackup.roll,
+      padding: mapCameraBackup.padding,
+      duration: 800,
+    });
+    const restoredMaxZoom = mapCameraBackup.maxZoom;
+    map.once('moveend', () => map.setMaxZoom(restoredMaxZoom));
+    mapCameraBackup = null;
+  }
+
+  // 3. UI 클래스 해제
+  document.body.classList.remove('in-3d-camera-mode');
+  cameraView.classList.remove('camera-view--3d');
+  cameraToggle3d.classList.remove('is-active');
+  cameraCrosshair.hidden = true;
+  cameraTargetLabel.hidden = true;
+  cameraToggleSelfie.hidden = true;
+  cameraToggleSelfie.classList.remove('is-active');
+  cameraToggleSelfie.setAttribute('aria-pressed', 'false');
+  cameraZoomPanel.hidden = true;
+
+  // 4. 일반 웹캠 스트림 복구 (필요시)
+  if (restoreCameraStream && window.showCameraView) {
+    window.showCameraView();
+  }
+}
+
+// 3D 카메라 중앙 조준 대상 고양이 스캔
+function update3DCameraTarget() {
+  if (!window.is3DCameraActive) return;
+
+  const canvas = map.getCanvas();
+  const screenCenterX = canvas.clientWidth / 2;
+  const screenCenterY = canvas.clientHeight / 2;
+  const userCoords = markerLngLat();
+
+  let targetCat = null;
+  let minScreenDistance = Infinity;
+
+  for (const actor of (animatedModelLayer.actors || [])) {
+    if (actor.modelType === 'bush') continue;
+
+    // 1. 지리적 거리 검사 (100m 이내)
+    const distM = distanceInMeters(userCoords, [Number(actor.lng), Number(actor.lat)]);
+    if (distM > 100) continue;
+
+    // 2. 카메라 시야각(FOV) 검사 (전방 45도 이내)
+    const catBearing = bearingBetween(userCoords, [Number(actor.lng), Number(actor.lat)]);
+    const diff = angleDifference(currentBearing, catBearing);
+    if (diff > 45) continue;
+
+    // 3. 3D 투영 좌표 획득
+    const screenPos = animatedModelLayer.getActorScreenPosition(actor.catId);
+    if (!screenPos) continue;
+
+    // 4. 화면 중앙과의 거리 계산
+    const screenDist = Math.hypot(screenPos.x - screenCenterX, screenPos.y - screenCenterY);
+    if (screenDist < 150 && screenDist < minScreenDistance) {
+      minScreenDistance = screenDist;
+      targetCat = actor;
+    }
+  }
+
+  if (targetCat) {
+    currentTargetCatId = targetCat.catId;
+    cameraCrosshair.classList.add('is-targeted');
+    cameraTargetLabel.classList.add('is-targeted');
+    cameraTargetLabel.textContent = `${targetCat.name} 조준 완료! 📸`;
+    shutterBtn.disabled = false;
+  } else {
+    currentTargetCatId = null;
+    cameraCrosshair.classList.remove('is-targeted');
+    cameraTargetLabel.classList.remove('is-targeted');
+    cameraTargetLabel.textContent = '고양이를 화면 중앙에 조준해주세요';
+    shutterBtn.disabled = true;
+  }
+}
+
+// 1인칭 드래그 회전 구현 (Look Around)
+function handleLookAroundStart(clientX, clientY) {
+  if (!window.is3DCameraActive) return;
+  isLookingAround = true;
+  lastMouseX = clientX;
+  lastMouseY = clientY;
+}
+
+function handleLookAroundMove(clientX, clientY) {
+  if (!isLookingAround || !window.is3DCameraActive) return;
+  const dx = clientX - lastMouseX;
+  const dy = clientY - lastMouseY;
+  lastMouseX = clientX;
+  lastMouseY = clientY;
+
+  // 화각을 좁혀 당긴 만큼(1인칭 확대) 같은 드래그가 더 크게 돌면 멀미가 난다 → 감도를 배율로 나눈다.
+  const zoomDamping = cameraMode3d === 'selfie' ? 1 : fpZoom;
+  const bearingSensitivity = 0.25 / zoomDamping;
+  const pitchSensitivity = 0.2 / zoomDamping;
+
+  // FPS 관례: 오른쪽으로 끌면 오른쪽을 보고(bearing↑), 아래로 끌면 아래를 본다(pitch↓).
+  // 셀카에서는 카메라가 미쿠를 중심으로 팔 길이만큼 공전하고, 미쿠도 따라 돌아 계속 렌즈를 본다.
+  currentBearing = (currentBearing + dx * bearingSensitivity + 360) % 360;
+  currentPitch =
+    cameraMode3d === 'selfie'
+      ? clamp(currentPitch - dy * pitchSensitivity, SELFIE_MIN_PITCH, SELFIE_MAX_PITCH)
+      : clamp(currentPitch - dy * pitchSensitivity, FP_MIN_PITCH, FP_MAX_PITCH);
+
+  apply3DCamera();
+}
+
+function handleLookAroundEnd() {
+  isLookingAround = false;
+}
+
+// 이벤트 리스너 등록
+cameraToggle3d.addEventListener('click', () => {
+  if (window.is3DCameraActive) {
+    disable3DCameraMode(true);
+  } else {
+    enable3DCameraMode();
+  }
+});
+
+cameraToggleSelfie.addEventListener('click', () => {
+  setCameraMode3d(cameraMode3d === 'selfie' ? 'first-person' : 'selfie');
+});
+
+document.querySelector('#camera-zoom-in').addEventListener('click', () => nudgeZoom(1.25));
+document.querySelector('#camera-zoom-out').addEventListener('click', () => nudgeZoom(1 / 1.25));
+
+// 노트북: 휠로 확대/축소
+cameraView.addEventListener(
+  'wheel',
+  (e) => {
+    if (!window.is3DCameraActive) return;
+    e.preventDefault();
+    nudgeZoom(e.deltaY < 0 ? 1.08 : 1 / 1.08);
+  },
+  { passive: false }
+);
+
+cameraView.addEventListener('mousedown', (e) => {
+  if (e.target.closest('button')) return;
+  if (e.button === 0) {
+    handleLookAroundStart(e.clientX, e.clientY);
+  }
+});
+
+cameraView.addEventListener('mousemove', (e) => {
+  handleLookAroundMove(e.clientX, e.clientY);
+});
+
+window.addEventListener('mouseup', handleLookAroundEnd);
+
+// 모바일: 한 손가락 = 시점 회전, 두 손가락 핀치 = 확대/축소
+let pinchStartDist3d = 0;
+let pinchStartZoom3d = 1;
+
+function touchSpread(touches) {
+  return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+}
+
+cameraView.addEventListener(
+  'touchstart',
+  (e) => {
+    if (!window.is3DCameraActive || e.target.closest('button')) return;
+    if (e.touches.length === 1) {
+      handleLookAroundStart(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 2) {
+      isLookingAround = false; // 두 번째 손가락이 닿는 순간 회전은 멈춘다
+      pinchStartDist3d = touchSpread(e.touches);
+      pinchStartZoom3d = currentZoomFactor();
+    }
+  },
+  { passive: true }
+);
+
+cameraView.addEventListener(
+  'touchmove',
+  (e) => {
+    if (!window.is3DCameraActive) return;
+    if (e.touches.length === 1) {
+      handleLookAroundMove(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 2 && pinchStartDist3d > 0) {
+      e.preventDefault();
+      setZoomFactor((pinchStartZoom3d * touchSpread(e.touches)) / pinchStartDist3d);
+    }
+  },
+  { passive: false }
+);
+
+window.addEventListener('touchend', (e) => {
+  handleLookAroundEnd();
+  // 핀치를 놓고 남은 한 손가락이 곧바로 시점을 홱 돌리지 않게, 기준점을 다시 잡아준다.
+  if (pinchStartDist3d > 0 && e.touches.length < 2) pinchStartDist3d = 0;
+  if (window.is3DCameraActive && e.touches.length === 1) {
+    handleLookAroundStart(e.touches[0].clientX, e.touches[0].clientY);
+  }
+});
+
+// ✕ 닫기 동작 시 오버랩 처리 및 3D 정리
+const originalHideCameraView = window.hideCameraView;
+window.hideCameraView = () => {
+  if (window.is3DCameraActive) {
+    disable3DCameraMode(false);
+  }
+  if (originalHideCameraView) {
+    originalHideCameraView();
+  }
+};
+
+// Shutter 클릭 이벤트 수신 (3D 캡처 및 업로드)
+window.addEventListener('catchme:3d-capture', async () => {
+  if (!window.is3DCameraActive || !currentTargetCatId) return;
+
+  shutterBtn.disabled = true;
+  cameraView.classList.add('is-capturing');
+
+  // 1. 스크린샷 캡처를 위해 일시적으로 버튼과 뷰파인더 가리기
+  cameraToggle3d.style.display = 'none';
+  cameraCrosshair.style.display = 'none';
+  cameraTargetLabel.style.display = 'none';
+  document.querySelector('#camera-view-close').style.display = 'none';
+  document.querySelector('.camera-message').style.display = 'none';
+  shutterBtn.style.display = 'none';
+
+  // 프레임 렌더 완료 대기 및 캡처
+  map.triggerRepaint();
+  
+  // requestAnimationFrame을 통해 지도가 다시 그려진 직후 캡처
+  requestAnimationFrame(() => {
+    setTimeout(async () => {
+      try {
+        const canvas = map.getCanvas();
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+        // UI 요소 원상복구
+        cameraToggle3d.style.display = '';
+        cameraCrosshair.style.display = '';
+        cameraTargetLabel.style.display = '';
+        document.querySelector('#camera-view-close').style.display = '';
+        document.querySelector('.camera-message').style.display = '';
+        shutterBtn.style.display = '';
+        shutterBtn.disabled = false;
+        cameraView.classList.remove('is-capturing');
+
+        // File 객체로 변환
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        const file = new File([blob], `catchme-3d-${Date.now()}.jpg`, { type: 'image/jpeg' });
+
+        // 3D 카메라 뷰 닫기
+        window.hideCameraView();
+
+        // 업로드 흐름 태우기 (catId 전달 및 virtual_3d 플래그)
+        processCapturedFile(file, currentTargetCatId, 'virtual_3d');
+      } catch (err) {
+        console.error('3D 월드 캡처에 실패했습니다.', err);
+        cameraToggle3d.style.display = '';
+        cameraCrosshair.style.display = '';
+        cameraTargetLabel.style.display = '';
+        document.querySelector('#camera-view-close').style.display = '';
+        document.querySelector('.camera-message').style.display = '';
+        shutterBtn.style.display = '';
+        shutterBtn.disabled = false;
+        cameraView.classList.remove('is-capturing');
+        window.alert('사진 캡처 도중 오류가 발생했습니다.');
+      }
+    }, 50);
+  });
+});
+
 // 뷰파인더에서 촬영했거나 기본 카메라/앨범에서 고른 사진을 공통 처리한다.
-async function processCapturedFile(file) {
+async function processCapturedFile(file, catId = null, captureMode = 'real_camera') {
   if (!file) return
   returnToMap()
 
   try {
     // 시작 직후 촬영해도 기존 사진 복원 작업이 새 사진을 덮어쓰지 않게 기다린다.
     await photoRestorePromise
-    // 첫 촬영이 기본 좌표에 저장되는 GPS 오류를 막는다.
-    const hasPhotoPosition = await refreshPositionForPhoto()
-    if (!hasPhotoPosition) {
-      window.alert('사진 위치를 확인할 수 없습니다. 위치 권한을 허용한 뒤 다시 촬영해 주세요.')
-      return
+    
+    if (captureMode !== 'virtual_3d') {
+      // 첫 촬영이 기본 좌표에 저장되는 GPS 오류를 막는다.
+      const hasPhotoPosition = await refreshPositionForPhoto()
+      if (!hasPhotoPosition) {
+        window.alert('사진 위치를 확인할 수 없습니다. 위치 권한을 허용한 뒤 다시 촬영해 주세요.')
+        return
+      }
     }
+    
     showCaptureLoading()
     let dataUrl
     try {
@@ -1620,7 +2267,7 @@ async function processCapturedFile(file) {
     }
 
     pendingCapturedPhoto = photo
-    const result = await uploadSighting(file, position)
+    const result = await uploadSighting(file, position, catId, captureMode)
     hideCaptureLoading()
     renderCaptureResponse(result, dataUrl)
 
@@ -1751,6 +2398,7 @@ const settingsScreen = document.querySelector('#settings-screen')
 const settingsNameForm = document.querySelector('#settings-name-form')
 const settingsNameInput = document.querySelector('#settings-name-input')
 const settingsImageInput = document.querySelector('#settings-image-input')
+const settingsImageFileInput = document.querySelector('#settings-image-file')
 const settingsPhotoPicker = document.querySelector('#settings-photo-picker')
 const settingsPhotoEmpty = document.querySelector('#settings-photo-empty')
 const settingsMessage = document.querySelector('#settings-message')
@@ -1898,6 +2546,31 @@ document.querySelector('[data-settings-photo-clear]')?.addEventListener('click',
   selectSettingsProfilePhoto('')
 })
 
+// 기기 사진 업로드: 파일을 고르는 즉시 서버에 올리고(=프로필 이미지로 확정), 돌아온
+// URL을 폼에 반영한다. "저장하기"를 눌러야 닉네임과 함께 다시 PATCH되지만, 이미
+// profileImageUrl이 같은 값이라 멱등이다.
+document.querySelector('[data-settings-photo-upload]')?.addEventListener('click', () => {
+  settingsImageFileInput?.click()
+})
+
+settingsImageFileInput?.addEventListener('change', async (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  showSettingsMessage('사진을 올리는 중이에요…')
+
+  try {
+    const data = await uploadProfileImage(file)
+    updateStoredUser({ ...getStoredUser(), ...data })
+    selectSettingsProfilePhoto(data.profileImageUrl ?? '')
+    updateDisplayedAvatar(data.profileImageUrl ?? null)
+    showSettingsMessage('프로필 사진을 바꿨어요.')
+  } catch (error) {
+    showSettingsMessage(error?.message ?? '사진을 올리지 못했습니다.', true)
+  } finally {
+    event.target.value = '' // 같은 파일을 다시 골라도 change가 뜨도록
+  }
+})
+
 document.querySelector('.cat-menu-logout')?.addEventListener('click', async (event) => {
   const button = event.currentTarget
   const originalHtml = button.innerHTML
@@ -1988,14 +2661,16 @@ function buildDexCard(cat) {
   return button
 }
 
+// 미발견 고양이는 실루엣/아이콘 없이 그냥 "???"만 뜬 밋밋한 타일로 표시한다
+// (포켓몬 도감의 미확인 번호 타일과 같은 느낌).
 function buildLockedDexCard() {
   const card = document.createElement('div')
   card.className = 'dex-card dex-card--locked'
   card.setAttribute('aria-hidden', 'true')
-  const photo = document.createElement('span')
-  photo.className = 'dex-card-photo'
-  photo.append(Object.assign(document.createElement('span'), { textContent: '🐈' }))
-  card.append(photo, Object.assign(document.createElement('strong'), { textContent: '???' }))
+  const tile = document.createElement('span')
+  tile.className = 'dex-card-photo'
+  tile.append(Object.assign(document.createElement('strong'), { textContent: '???' }))
+  card.append(tile)
   return card
 }
 
@@ -2527,6 +3202,15 @@ settingsNameForm?.addEventListener('submit', async (event) => {
 })
 
 updateDisplayedName(currentDisplayName())
+
+// 이 모듈은 로그인 전에 한 번 평가되므로, 위 updateDisplayedName은 아직 세션이 없는
+// 상태(=기본값 "캣집사")로 그려진다. 로그인/닉네임 설정을 마치고 서비스로 들어오는
+// 시점에 저장된 사용자로 이름·아바타를 다시 그려야 방금 입력한 닉네임이 반영된다.
+window.addEventListener('catchme:enter-service', () => {
+  updateDisplayedName(currentDisplayName())
+  updateDisplayedAvatar(getStoredUser()?.profileImageUrl ?? null)
+})
+
 if (window.location.hash === '#settings') {
   document.querySelector('#welcome').hidden = true
   document.querySelector('#signup').hidden = true

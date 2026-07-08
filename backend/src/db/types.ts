@@ -75,6 +75,7 @@ export interface CatPhotoRow {
   crop_image_url: string | null
   detection_bbox_json: DetectionBbox | null
   quality_score: number | null
+  capture_source: string
   created_at: string
 }
 

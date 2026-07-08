@@ -8,6 +8,51 @@ const SKELETON_UTILS_CDN = THREE_CDN + "/examples/jsm/utils/SkeletonUtils.js"
 const clamp = (value, minimum, maximum) =>
   Math.min(maximum, Math.max(minimum, value))
 
+// 아바타/고양이 탭 상호작용에서 "잠깐 특정 방향을 보게" 만드는 공용 헬퍼. 매 프레임
+// makeTransform에서 다시 평가되므로, 만료되면 별도 정리 없이 원래 각도로 자연히 돌아간다.
+function startFacingOverride(targetYawRadians, holdSeconds) {
+  return { targetYaw: targetYawRadians, expiresAt: Date.now() + holdSeconds * 1000 }
+}
+function resolveYaw(baseYaw, override) {
+  return override && Date.now() < override.expiresAt ? override.targetYaw : baseYaw
+}
+
+// main.js의 bearingBetween과 동일한 로직(순환 import를 피하려고 여기 따로 둠 — 바뀌면
+// main.js 쪽도 같이 맞출 것). from → to 방향의 나침반 방위각(라디안, 0=북쪽·시계방향).
+function bearingBetweenRadians(from, to) {
+  const toRad = (deg) => (deg * Math.PI) / 180
+  const lat1 = toRad(from[1])
+  const lat2 = toRad(to[1])
+  const deltaLng = toRad(to[0] - from[0])
+  const y = Math.sin(deltaLng) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng)
+  return Math.atan2(y, x)
+}
+
+// 나침반 방위각(북=0, 시계방향) → makeTransform의 rotationY 값으로 변환.
+//
+// makeTransform은 scale(s, -s, s) · rotX(90°) · rotY(θ) 순으로 곱하므로, 모델 로컬
+// forward(-Z)는 머케이터 좌표에서 (-sinθ, -cosθ)로 간다(x=동쪽+, y=남쪽+).
+//   θ=0   → (0, -1) = 북쪽
+//   θ=+90 → (-1, 0) = 서쪽
+// 즉 θ가 커지면 북→서(반시계)로 도는데, 나침반 방위각은 북→동(시계)으로 커진다.
+// 그래서 부호를 뒤집어야 실제로 그 방위각을 바라본다.
+function yawForBearing(bearingRadians) {
+  return -bearingRadians
+}
+
+// 고양이 id를 해시해 0~2π 사이 결정적(deterministic) 각도로 매핑한다. 같은 고양이는
+// 항상 같은 값이 나오므로 폴링/재조회로 actor 목록이 다시 와도 방향이 튀지 않는다.
+function seededYawForId(id) {
+  const str = String(id)
+  let h = 0
+  for (let i = 0; i < str.length; i++) h = (Math.imul(h, 31) + str.charCodeAt(i)) | 0
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b)
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b)
+  h ^= h >>> 16
+  return ((h >>> 0) / 4294967296) * Math.PI * 2
+}
+
 // 미쿠가 항상 바라보는 지도 기준 방향(북쪽).
 // 시점 전환 시 미쿠가 돌아보는 게 아니라, 원래 그쪽을 보고 있던 것처럼 보인다.
 const AVATAR_WORLD_HEADING = Math.PI
@@ -120,6 +165,7 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
     isFollowing: false,
     visibilityProgress: 0,
     visibilityTarget: 0,
+    avatarPosition: null,
 
     setFollowing(isFollowing) {
       this.isFollowing = Boolean(isFollowing)
@@ -128,8 +174,19 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
       this.map?.triggerRepaint?.()
     },
 
+    setAvatarPosition(position) {
+      this.avatarPosition = position
+    },
+
     setActors(actors) {
-      this.actors = actors
+      // 백엔드는 고양이 rotationY를 채우지 않아(건물 rotation_y만 실존) 항상 비어있다 —
+      // 방향이 다 똑같아 보이지 않게, 고양이별로 고정된(고양이 id 시드) 랜덤 방향을 준다.
+      // 매 폴링마다 같은 값이 나와야 화면에서 방향이 안 튄다.
+      this.actors = actors.map((actor) =>
+        actor.modelType !== 'bush' && actor.rotationY == null
+          ? { ...actor, rotationY: seededYawForId(actor.catId) }
+          : actor
+      )
       this.originCoordinate = null
       if (this.scene) this.syncActors()
     },
@@ -181,6 +238,14 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
       if (!instance?.mixer || !instance.clips || !instance.idleAction) return false
       const clip = instance.clips.find((c) => namePattern.test(c.name))
       if (!clip) return false
+
+      if (this.avatarPosition) {
+        const actor = this.actors.find((a) => String(a.catId) === String(catId))
+        if (actor) {
+          const bearing = bearingBetweenRadians([Number(actor.lng), Number(actor.lat)], this.avatarPosition)
+          instance.facingOverride = startFacingOverride(yawForBearing(bearing), clip.duration + 0.3)
+        }
+      }
 
       const action = instance.mixer.clipAction(clip)
       action.reset()
@@ -258,6 +323,8 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
         this.modelHeightMeters() *
         Number(actor.modelScale ?? 1) *
         visibilityScale
+      const instance = this.instances.get(String(actor.catId))
+      const yaw = resolveYaw(Number(actor.rotationY ?? 0), instance?.facingOverride)
       const matrix = new THREE.Matrix4()
         .makeTranslation(
           coordinate.x - this.originCoordinate.x,
@@ -266,7 +333,7 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
         )
         .scale(new THREE.Vector3(scale, -scale, scale))
         .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2))
-        .multiply(new THREE.Matrix4().makeRotationY(Number(actor.rotationY ?? 0)))
+        .multiply(new THREE.Matrix4().makeRotationY(yaw))
       return matrix
     },
 
@@ -323,8 +390,31 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
             if (isBush) {
               if (bushAnimations?.length) {
                 mixer = new THREE.AnimationMixer(model)
-                for (const clip of bushAnimations) {
-                  mixer.clipAction(clip).play()
+                const spawnClip = bushAnimations.find((c) => /spawn|appear/i.test(c.name))
+                const idleClip = bushAnimations.find((c) => /idle|shake/i.test(c.name)) ?? bushAnimations[0]
+                
+                if (spawnClip) {
+                  const spawnAction = mixer.clipAction(spawnClip)
+                  spawnAction.setLoop(THREE.LoopOnce, 1)
+                  spawnAction.clampWhenFinished = true
+                  spawnAction.play()
+                  
+                  if (idleClip) {
+                    const idleAction = mixer.clipAction(idleClip)
+                    const onFinished = (event) => {
+                      if (event.action === spawnAction) {
+                        mixer.removeEventListener('finished', onFinished)
+                        idleAction.play()
+                      }
+                    }
+                    mixer.addEventListener('finished', onFinished)
+                  }
+                } else if (idleClip) {
+                  mixer.clipAction(idleClip).play()
+                } else {
+                  for (const clip of bushAnimations) {
+                    mixer.clipAction(clip).play()
+                  }
                 }
                 this.mixers.push(mixer)
               }
@@ -579,6 +669,78 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
     // 자연스럽게 확대되는 느낌을 준다.
     visibilityTarget: 1,
     isFollowing: false,
+    // null이면 기존 동작(makeTransform이 mapBearing으로 yaw를 잡는다). 값이 있으면
+    // 지도 방위와 무관하게 그 나침반 방위각(북=0, 시계방향)을 바라본다. 3D 카메라의
+    // 1인칭/셀카 모드에서 미쿠가 카메라를 등지거나 마주보게 하려고 쓴다.
+    facingBearingDeg: null,
+
+    setFacingBearing(bearingDeg) {
+      this.facingBearingDeg = bearingDeg == null ? null : Number(bearingDeg)
+      this.map?.triggerRepaint?.()
+    },
+
+    // 미쿠의 머티리얼은 전부 DoubleSide(컬링 없음)라, 1인칭 카메라가 머리 안에 들어가면
+    // 머리·머리카락의 안쪽 면이 화면을 가득 채운다. 안쪽 면을 컬링하면 머리가 사라지고
+    // 아래를 볼 때 몸통과 다리만 보인다 — FPS가 자기 캐릭터를 그리는 방식 그대로다.
+    //
+    // 컬링 방향이 BackSide인 게 핵심이다: makeTransform의 scale(s, -s, s)는 행렬식이 음수라
+    // 삼각형 와인딩이 통째로 뒤집힌다. 그래서 "바깥 면"이 three.js 입장에선 back face다.
+    // (셀카/일반 시점처럼 바깥에서 볼 땐 원래의 DoubleSide로 돌려놔야 치마·머리카락이 안 뚫린다.)
+    setBackfaceCulling(enabled) {
+      if (!this.model) return
+      this.model.traverse((object) => {
+        if (!object.isMesh) return
+        const materials = Array.isArray(object.material) ? object.material : [object.material]
+        for (const material of materials) {
+          if (!material) continue
+          if (material.userData.originalSide === undefined) {
+            material.userData.originalSide = material.side
+          }
+          const nextSide = enabled ? THREE.BackSide : material.userData.originalSide
+          if (material.side !== nextSide) {
+            material.side = nextSide
+            material.needsUpdate = true
+          }
+        }
+      })
+      this.map?.triggerRepaint?.()
+    },
+
+    // 1인칭 카메라(눈높이)에서 머리·목·어깨는 렌즈 바로 앞이라, 아래를 내려다보면 어깨가
+    // 화면 절반을 덮고 정작 다리가 안 보인다. 카메라를 앞으로 빼거나 위로 올려도 어깨보다
+    // 다리가 먼저 프레임 밖으로 밀려난다(스크린 좌표로 확인). FPS 엔진이 쓰는 방식대로
+    // 눈 아래를 자르는 클리핑 평면을 두면 어깨 위쪽 지오메트리가 통째로 사라진다.
+    // heightM은 지면 기준 높이(m), null이면 클리핑 해제.
+    setClipHeight(heightM) {
+      if (!this.model) return
+      this.clipHeightM = heightM == null ? null : Number(heightM)
+
+      if (this.clipHeightM != null && !this.clipPlane) {
+        // z <= zMax 인 점만 남긴다: normal·p + constant >= 0  →  -z + zMax >= 0
+        this.clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0)
+      }
+      if (this.renderer) this.renderer.localClippingEnabled = this.clipHeightM != null
+
+      const planes = this.clipHeightM == null ? null : [this.clipPlane]
+      this.model.traverse((object) => {
+        if (!object.isMesh) return
+        const materials = Array.isArray(object.material) ? object.material : [object.material]
+        for (const material of materials) {
+          if (!material) continue
+          material.clippingPlanes = planes
+          material.needsUpdate = true
+        }
+      })
+      this.map?.triggerRepaint?.()
+    },
+
+    // 씬 좌표(원점 기준 mercator 오프셋)에서 +z가 고도다. 위도에 따라 1m의 mercator 길이가
+    // 달라지므로 매 프레임 평면 상수를 다시 잡는다.
+    updateClipPlane() {
+      if (this.clipHeightM == null || !this.clipPlane || !this.position) return
+      const coordinate = MercatorCoordinate.fromLngLat(this.position, 0)
+      this.clipPlane.constant = this.clipHeightM * coordinate.meterInMercatorCoordinateUnits()
+    },
 
     setFollowing(isFollowing) {
       this.isFollowing = Boolean(isFollowing)
@@ -777,6 +939,13 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
         visibilityScale
       const mapBearing = (this.map.getBearing() * Math.PI) / 180
 
+      // scale의 y축 반전(-scale) + rotationX(90°) 탓에 yaw θ와 나침반 방위각 β는
+      // θ = −β 로 대응한다(브라우저에서 실측 확인).
+      const yaw =
+        this.facingBearingDeg == null
+          ? Math.PI + mapBearing
+          : -(this.facingBearingDeg * Math.PI) / 180
+
       const matrix = new THREE.Matrix4()
         .makeTranslation(
           coordinate.x - this.originCoordinate.x,
@@ -785,7 +954,7 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
         )
         .scale(new THREE.Vector3(scale, -scale, scale))
         .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2))
-        .multiply(new THREE.Matrix4().makeRotationY(Math.PI + mapBearing))
+        .multiply(new THREE.Matrix4().makeRotationY(yaw))
       return matrix
     },
 
@@ -801,6 +970,7 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       this.scene.visible = shouldRender
       if (!shouldRender) return
 
+      this.updateClipPlane()
       this.root.matrix.copy(this.makeTransform())
       this.root.matrixWorldNeedsUpdate = true
 
@@ -840,6 +1010,7 @@ export function createAnimatedModelLayer(map) {
       this.avatarPosition = [...position]
       this.ensureAvatarWorldLayer()
       if (this.avatarWorldLayer) this.avatarWorldLayer.setPosition(position)
+      if (this.catWorldLayer) this.catWorldLayer.setAvatarPosition(this.avatarPosition)
     },
 
     setFollowing(isFollowing) {
@@ -851,6 +1022,34 @@ export function createAnimatedModelLayer(map) {
 
     setAvatarTransitioning(isTransitioning) {
       this.avatarWorldLayer?.setTransitioning(isTransitioning)
+    },
+
+    // 나침반 방위각(북=0, 시계방향)을 바라보게 한다. null이면 지도 방위를 따라가는 기본 동작.
+    setAvatarFacing(bearingDeg) {
+      this.avatarFacingBearingDeg = bearingDeg == null ? null : Number(bearingDeg)
+      this.avatarWorldLayer?.setFacingBearing(this.avatarFacingBearingDeg)
+    },
+
+    // 1인칭 카메라가 미쿠의 머리 안에 있을 때만 켠다.
+    setAvatarBackfaceCulling(enabled) {
+      this.avatarBackfaceCulling = Boolean(enabled)
+      this.avatarWorldLayer?.setBackfaceCulling(this.avatarBackfaceCulling)
+    },
+
+    // 1인칭에서 눈 아래(어깨 위)를 잘라내는 높이(m). null이면 해제.
+    setAvatarClipHeight(heightM) {
+      this.avatarClipHeightM = heightM == null ? null : Number(heightM)
+      this.avatarWorldLayer?.setClipHeight(this.avatarClipHeightM)
+    },
+
+    setAvatarVisible(visible) {
+      if (this.avatarWorldLayer) {
+        this.avatarWorldLayer.visibilityTarget = visible ? 1 : 0
+        if (!visible) {
+          this.avatarWorldLayer.visibilityProgress = 0
+          if (this.avatarWorldLayer.scene) this.avatarWorldLayer.scene.visible = false
+        }
+      }
     },
 
     isAvatarHit(point, radiusPx = 78) {
@@ -941,6 +1140,9 @@ export function createAnimatedModelLayer(map) {
         if (this.map.getLayer(this.avatarWorldLayer.id)) return
         this.map.addLayer(this.avatarWorldLayer)
         this.avatarWorldLayer.setFollowing(this.isFollowing)
+        this.avatarWorldLayer.setFacingBearing(this.avatarFacingBearingDeg ?? null)
+        this.avatarWorldLayer.setBackfaceCulling(Boolean(this.avatarBackfaceCulling))
+        this.avatarWorldLayer.setClipHeight(this.avatarClipHeightM ?? null)
         if (this.avatarPosition) this.avatarWorldLayer.setPosition(this.avatarPosition)
       }
 
@@ -959,6 +1161,7 @@ export function createAnimatedModelLayer(map) {
         bushAnimations: this.bushAnimations,
         loadModelTemplate: this.loadModelTemplate.bind(this),
       })
+      if (this.avatarPosition) this.catWorldLayer.setAvatarPosition(this.avatarPosition)
 
       const addLayer = () => {
         if (this.map.getLayer(this.catWorldLayer.id)) return

@@ -250,3 +250,7 @@ CREATE INDEX IF NOT EXISTS idx_cat_sightings_cat_seen_at ON cat_sightings(cat_id
 CREATE INDEX IF NOT EXISTS idx_cat_sightings_user_created_at ON cat_sightings(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_cat_placements_updated_at ON cat_placements(updated_at);
 CREATE INDEX IF NOT EXISTS idx_cat_photo_embeddings_cat ON cat_photo_embeddings(cat_id);
+
+-- Track the source of the photograph (real camera vs 3D virtual world)
+ALTER TABLE cat_photos ADD COLUMN IF NOT EXISTS capture_source VARCHAR(30) NOT NULL DEFAULT 'real_camera';
+

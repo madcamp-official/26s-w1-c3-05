@@ -27,167 +27,6 @@
       </div>
     </section>
 
-    <!-- ⚠️ TEMP: 디자인 QA용 — 만든 화면을 URL 타이핑 없이 한 번에 둘러보는 패널. 배포 전 이 블록 통째로 삭제 -->
-    <button id="temp-qa-nav-btn" type="button">🧭 화면 모아보기 (QA)</button>
-    <div id="temp-qa-nav-panel" hidden>
-      <div id="temp-qa-nav-backdrop"></div>
-      <div id="temp-qa-nav-list">
-        <header>
-          <strong>화면 모아보기</strong>
-          <button id="temp-qa-nav-close" type="button" aria-label="닫기">✕</button>
-        </header>
-        <button type="button" data-qa-go="welcome">오프닝</button>
-        <button type="button" data-qa-go="email-auth">이메일 로그인</button>
-        <button type="button" data-qa-go="signup">회원가입</button>
-        <button type="button" data-qa-go="nickname-setup">닉네임 입력</button>
-        <button type="button" data-qa-go="camera">카메라 촬영</button>
-        <button type="button" data-qa-go="capture-loading">촬영결과 · 판별 로딩</button>
-        <button type="button" data-qa-go="capture-failure">촬영결과 · 감지실패</button>
-        <button type="button" data-qa-go="capture-existing">촬영결과 · 기존 고양이</button>
-        <button type="button" data-qa-go="capture-new">촬영결과 · 새 고양이(이름짓기)</button>
-        <button type="button" data-qa-go="capture-candidates">촬영결과 · 후보선택</button>
-        <button type="button" data-qa-go="menu">사이드 메뉴</button>
-        <button type="button" data-qa-go="profile">도감</button>
-        <button type="button" data-qa-go="detail">고양이 상세</button>
-        <button type="button" data-qa-go="favorites">즐겨찾기 목록</button>
-        <button type="button" data-qa-go="activity">기록</button>
-        <button type="button" data-qa-go="settings">설정</button>
-        <button type="button" data-qa-go="gallery">갤러리(내 고양이)</button>
-        <button type="button" data-qa-go="help">도움말</button>
-      </div>
-    </div>
-    <style>
-      #temp-qa-nav-btn {
-        position: fixed;
-        right: 16px;
-        bottom: 24px;
-        z-index: 9999;
-        padding: 12px 18px;
-        border: 2px dashed #d9534f;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.92);
-        color: #d9534f;
-        font-size: 14px;
-        font-weight: 700;
-        cursor: pointer;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-      }
-      #temp-qa-nav-panel {
-        position: fixed;
-        inset: 0;
-        z-index: 10000;
-      }
-      #temp-qa-nav-panel[hidden] {
-        display: none;
-      }
-      #temp-qa-nav-backdrop {
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.4);
-      }
-      #temp-qa-nav-list {
-        position: absolute;
-        right: 16px;
-        bottom: 24px;
-        width: min(280px, 80vw);
-        max-height: 80vh;
-        overflow-y: auto;
-        display: grid;
-        gap: 6px;
-        padding: 14px;
-        border: 2px dashed #d9534f;
-        border-radius: 20px;
-        background: #fff;
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
-      }
-      #temp-qa-nav-list header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 4px;
-        color: #d9534f;
-      }
-      #temp-qa-nav-list header button {
-        border: none;
-        background: none;
-        font-size: 16px;
-        cursor: pointer;
-        color: #d9534f;
-      }
-      #temp-qa-nav-list button[data-qa-go] {
-        padding: 10px 12px;
-        border: 1px solid rgba(217, 83, 79, 0.3);
-        border-radius: 10px;
-        background: #fff5f5;
-        color: #333;
-        font-size: 13px;
-        font-weight: 600;
-        text-align: left;
-        cursor: pointer;
-      }
-      #temp-qa-nav-list button[data-qa-go]:active {
-        background: #ffe3e3;
-      }
-    </style>
-    <script>
-      ;(() => {
-        const panel = document.querySelector('#temp-qa-nav-panel')
-        const openPanel = () => { panel.hidden = false }
-        const closePanel = () => { panel.hidden = true }
-        document.querySelector('#temp-qa-nav-btn').addEventListener('click', openPanel)
-        document.querySelector('#temp-qa-nav-close').addEventListener('click', closePanel)
-        document.querySelector('#temp-qa-nav-backdrop').addEventListener('click', closePanel)
-
-        // 화면 전환 전, 지금 열려있는 오버레이를 전부 닫아 겹치지 않게 한다.
-        function closeAllOverlays() {
-          const selectors = [
-            '#email-auth', '#signup', '#nickname-setup', '#capture-result', '#profile-dex', '#cat-detail',
-            '#settings-screen', '#cat-gallery', '#favorites-screen', '#activity-screen',
-            '#help-screen', '#camera-view', '#location-photos',
-          ]
-          selectors.forEach((sel) => {
-            const el = document.querySelector(sel)
-            if (!el) return
-            el.hidden = true
-          })
-          const menu = document.querySelector('#cat-menu')
-          if (menu) { menu.classList.remove('is-open'); menu.hidden = true }
-          const welcome = document.querySelector('#welcome')
-          if (welcome) welcome.hidden = true
-        }
-
-        const actions = {
-          welcome: () => { const w = document.querySelector('#welcome'); if (w) w.hidden = false },
-          'email-auth': () => document.querySelector('[data-email-login]')?.click(),
-          signup: () => window.openSignup?.(),
-          'nickname-setup': () => window.openNicknameSetup?.(),
-          camera: () => window.showCameraView?.(),
-          'capture-loading': () => window.showCaptureResult?.('loading'),
-          'capture-failure': () => window.showCaptureResult?.('failure'),
-          'capture-existing': () => window.showCaptureResult?.('existing'),
-          'capture-new': () => window.showCaptureResult?.('new'),
-          'capture-candidates': () => window.showCaptureResult?.('candidates'),
-          menu: () => document.querySelector('#menu-btn')?.click(),
-          profile: () => window.showProfileDex?.(),
-          detail: () => { const d = document.querySelector('#cat-detail'); if (d) d.hidden = false },
-          favorites: () => document.querySelector('[data-open-favorites]')?.click(),
-          activity: () => document.querySelector('[data-open-activity]')?.click(),
-          settings: () => window.showSettingsScreen?.(),
-          gallery: () => document.querySelector('#cat-gallery-btn')?.click(),
-          help: () => document.querySelector('[data-open-help]')?.click(),
-        }
-
-        document.querySelectorAll('[data-qa-go]').forEach((button) => {
-          button.addEventListener('click', () => {
-            closePanel()
-            closeAllOverlays()
-            actions[button.dataset.qaGo]?.()
-          })
-        })
-      })()
-    </script>
-    <!-- /TEMP -->
-
     <section id="email-auth" class="email-auth" aria-labelledby="email-auth-title" hidden>
       <div class="email-auth-decoration email-auth-decoration--left" aria-hidden="true">✿</div>
       <div class="email-auth-decoration email-auth-decoration--right" aria-hidden="true">✿</div>
@@ -594,12 +433,25 @@
       <div class="camera-scene" data-camera-fallback aria-hidden="true"></div>
 
       <button id="camera-view-close" class="camera-view-close" type="button" aria-label="카메라 닫기">✕</button>
+      <button id="camera-toggle-3d" class="camera-toggle-3d-btn" type="button" aria-label="3D 가상 카메라 토글">
+        <span>3D 카메라</span>
+      </button>
+      <button id="camera-toggle-selfie" class="camera-toggle-selfie-btn" type="button" aria-label="셀카 모드 토글" aria-pressed="false" hidden>
+        <span>🤳 셀카</span>
+      </button>
+      <div id="camera-zoom" class="camera-zoom" hidden>
+        <button id="camera-zoom-in" class="camera-zoom-btn" type="button" aria-label="확대">＋</button>
+        <span id="camera-zoom-level" class="camera-zoom-level">1.0×</span>
+        <button id="camera-zoom-out" class="camera-zoom-btn" type="button" aria-label="축소">－</button>
+      </div>
 
       <div class="camera-viewfinder" aria-hidden="true">
         <span class="camera-corner camera-corner--tl"></span>
         <span class="camera-corner camera-corner--tr"></span>
         <span class="camera-corner camera-corner--bl"></span>
         <span class="camera-corner camera-corner--br"></span>
+        <div id="camera-crosshair" class="camera-crosshair" hidden></div>
+        <div id="camera-target-label" class="camera-target-label" hidden>고양이를 조준해주세요</div>
       </div>
 
       <div class="camera-message">
@@ -700,7 +552,7 @@
           <span class="settings-avatar" aria-hidden="true">👩‍🌾</span>
           <div>
             <h1 id="settings-title">설정</h1>
-            <p>프로필 이름을 바꿀 수 있어요.</p>
+            <p>프로필 이름과 사진을 바꿀 수 있어요.</p>
           </div>
         </div>
 
@@ -717,7 +569,9 @@
           />
           <label for="settings-photo-picker">프로필 사진 <span class="settings-optional">(선택)</span></label>
           <input id="settings-image-input" name="profileImageUrl" type="hidden" />
+          <input id="settings-image-file" type="file" accept="image/jpeg,image/png,image/webp" hidden />
           <div class="settings-photo-actions">
+            <button class="settings-photo-upload" type="button" data-settings-photo-upload>사진 올리기</button>
             <button class="settings-photo-clear" type="button" data-settings-photo-clear>기본 이미지로</button>
           </div>
           <div id="settings-photo-picker" class="settings-photo-picker" aria-label="갤러리에서 프로필 사진 선택"></div>
@@ -788,6 +642,9 @@
         <path d="M4 7h16M4 12h16M4 17h16" stroke="#2b9e7f" stroke-width="2" stroke-linecap="round" />
       </svg>
     </button>
+
+    <!-- 배경음악 토글 (메뉴 버튼 아래) -->
+    <button id="bgm-btn" type="button" aria-pressed="true" aria-label="배경음악 끄기">🔊</button>
 
     <!-- 카메라 실행 버튼 (아래 중앙) -->
     <button id="camera-btn" aria-label="카메라 실행">
@@ -1253,6 +1110,10 @@
         })
 
         shutter.addEventListener('click', () => {
+          if (window.is3DCameraActive) {
+            window.dispatchEvent(new CustomEvent('catchme:3d-capture'))
+            return
+          }
           if (!activeStream || !video.videoWidth || !video.videoHeight) {
             window.hideCameraView()
             cameraInput?.click()

@@ -121,8 +121,10 @@ const createUniqueOAuthUsername = async (provider: 'google' | 'kakao' | 'guest',
 }
 
 const defaultNicknameFromEmail = (email: string) => email.split('@')[0].slice(0, 50) || '캣집사'
+// 게스트도 처음 들어올 때 닉네임을 직접 정하게 한다 — 예전엔 게스트를 제외해서
+// "Guest a1b2c3" 같은 자동 닉네임이 그대로 굳어버렸다.
 const needsNickname = (user: { auth_provider: string; nickname_onboarded: boolean }) =>
-  user.auth_provider !== 'guest' && !user.nickname_onboarded
+  !user.nickname_onboarded
 const authResponse = (user: Awaited<ReturnType<typeof createUser>>, isNewUser: boolean) => ({
   user: toPublicUser(user),
   accessToken: signAccessToken(user),
@@ -191,7 +193,7 @@ authRouter.post('/auth/guest', async (_req, res, next) => {
       authProvider: 'guest',
       providerUserId: guestId,
       nickname: `Guest ${guestId.slice(0, 6)}`,
-      nicknameOnboarded: true,
+      nicknameOnboarded: false,
     })
 
     res.status(201).json(authResponse(user, false))

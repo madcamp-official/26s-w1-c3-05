@@ -73,8 +73,15 @@ function openSignup() {
 
 window.openSignup = openSignup
 
+// 어떤 로그인 수단이든(게스트 포함) 닉네임 온보딩이 안 끝났으면 이름을 물어본다.
+// 예전엔 여기서 authProvider 화이트리스트로 한 번 더 걸러서, 게스트는 이름 입력
+// 화면이 아예 안 떴다.
+//
+// 게스트는 "둘러보기"를 누를 때마다 서버에서 새 계정이 만들어지고 "Guest a1b2c3" 같은
+// 자동 닉네임이 붙는다 — 그러니 항상 새로 물어보는 게 맞다. 백엔드의 needsNickname에만
+// 의존하면 게스트를 온보딩 완료로 표시하는(구버전) 서버에 붙었을 때 화면이 안 뜬다.
 function shouldOpenNicknameSetup(data) {
-  return Boolean(data?.needsNickname && ['local', 'google', 'kakao'].includes(data.user?.authProvider))
+  return Boolean(data?.needsNickname) || data?.user?.authProvider === 'guest'
 }
 
 function openNicknameSetup(user) {
@@ -85,7 +92,11 @@ function openNicknameSetup(user) {
   nicknameSetup.hidden = false
   showMessage(document.querySelector('#nickname-setup-message'))
   nicknameSetupInput.value = ''
-  nicknameSetupInput.placeholder = user?.nickname ? `${user.nickname} 말고 새 닉네임` : '예: 고양이탐험가'
+  // 자동 생성된 닉네임("Guest a1b2c3", 이메일 앞부분 등)은 힌트로 보여줄 값이 아니다 —
+  // 사용자가 직접 정한 닉네임이 이미 있을 때만 "○○ 말고 새 닉네임"으로 안내한다.
+  // (게스트 닉네임은 항상 서버가 지어준 것이라 구버전 서버가 온보딩 완료로 표시해도 제외한다.)
+  const hasChosenNickname = user?.nicknameOnboarded && user?.nickname && user?.authProvider !== 'guest'
+  nicknameSetupInput.placeholder = hasChosenNickname ? `${user.nickname} 말고 새 닉네임` : '예: 고양이탐험가'
   nicknameSetupInput.focus()
 }
 

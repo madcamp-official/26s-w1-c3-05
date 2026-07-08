@@ -52,9 +52,10 @@
 
 > 서비스의 전체 페이지 구조와 페이지 간 이동 흐름; 각 페이지의 주요 UI 구성, 입력 요소, 버튼, 사용자 행동 흐름 등을 간단한 와이어프레임 형태로 정리
 
-<!-- Figma 링크 또는 이미지 첨부 -->
+- **정보 구조도 (IA) 및 다이어그램:** [information-architecture.md](file:///c:/Users/user/2026-project/kaist_madcamp/week1-remote/docs/information-architecture.md)
+- **Figma 디자인:** [Figma 링크](https://www.figma.com/design/TlUTjkjFJAzOmrYmchn3nz/%EB%AC%98%EC%BA%A3%EB%AA%AC%EA%B3%A0?node-id=3-2&p=f&t=UWYx75Opi0zk6MiR-0)
 
----https://www.figma.com/design/TlUTjkjFJAzOmrYmchn3nz/%EB%AC%98%EC%BA%A3%EB%AA%AC%EA%B3%A0?node-id=3-2&p=f&t=UWYx75Opi0zk6MiR-0
+---
 
 ## DB 스키마
 

@@ -19,10 +19,11 @@ import {
   setEmbeddingCatForPhoto,
   updatePhotoMatch,
   upsertCollection,
+  findPlacementByCatId,
 } from '../db/repositories.js'
 import { getCurrentUser, requireAuth, type AuthRequest } from '../lib/auth.js'
 import { resolveModelKey } from '../lib/catModels.js'
-import { findZoneId } from '../lib/geo.js'
+import { findZoneId, distanceMeters } from '../lib/geo.js'
 import { HttpError } from '../lib/httpError.js'
 import { assetUrl, candidate, sighting } from '../lib/serializers.js'
 import { catVisionService } from '../services/catVision/index.js'
@@ -106,6 +107,7 @@ sightingsRouter.post('/sightings', requireAuth, upload.single('image'), async (r
       isCat: booleanish.optional(),
       forceConfirmation: booleanish.optional(),
       imageUrl: z.string().url().optional(),
+      captureMode: z.enum(['real_camera', 'virtual_3d']).optional().default('real_camera'),
     }).parse(req.body)
 
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : body.imageUrl
@@ -113,6 +115,80 @@ sightingsRouter.post('/sightings', requireAuth, upload.single('image'), async (r
 
     const zoneId = await findZoneId(body.latitude, body.longitude)
     const takenAt = nowIso()
+
+    if (body.captureMode === 'virtual_3d') {
+      const catId = body.catId ? Number(body.catId) : null
+      if (!catId) {
+        throw new HttpError(400, '3D 가상 카메라 촬영 시 고양이 ID(catId)는 필수입니다.', 'VALIDATION_ERROR')
+      }
+
+      const cat = await findCatById(catId)
+      if (!cat) {
+        throw new HttpError(404, '지정된 고양이를 찾을 수 없습니다.', 'NOT_FOUND')
+      }
+
+      const placement = await findPlacementByCatId(catId)
+      if (!placement) {
+        throw new HttpError(400, '현재 월드에 배치되지 않은 고양이입니다.', 'VALIDATION_ERROR')
+      }
+
+      const dist = distanceMeters(
+        { latitude: body.latitude, longitude: body.longitude },
+        { latitude: Number(placement.latitude), longitude: Number(placement.longitude) }
+      )
+      if (dist > 100) {
+        throw new HttpError(400, '고양이가 너무 멀리 있어 촬영할 수 없습니다.', 'VALIDATION_ERROR')
+      }
+
+      const photo = await createPhoto({
+        userId: user.id,
+        catId: cat.id,
+        imageUrl,
+        latitude: body.latitude,
+        longitude: body.longitude,
+        zoneId,
+        takenAt,
+        isCat: true,
+        isGalleryVisible: true,
+        identificationStatus: 'matched',
+        captureSource: 'virtual_3d',
+      })
+
+      const createdSighting = await createSighting({
+        catId: cat.id,
+        userId: user.id,
+        photoId: photo.id,
+        latitude: body.latitude,
+        longitude: body.longitude,
+        zoneId,
+        seenAt: takenAt,
+      })
+
+      const { isNew } = await upsertCollection({
+        userId: user.id,
+        catId: cat.id,
+        photoId: photo.id,
+        seenAt: takenAt,
+      })
+
+      await setCatModelKeyIfNull(cat.id, resolveModelKey(cat, 'orange'))
+
+      return res.status(201).json({
+        photoId: String(photo.id),
+        sightingId: String(createdSighting.id),
+        detectionStatus: 'matched',
+        cat: {
+          id: String(cat.id),
+          name: cat.name,
+          mainImageUrl: assetUrl(cat.representative_photo_url),
+          isNewCollection: isNew,
+        },
+        placement: {
+          latitude: createdSighting.placementLatitude,
+          longitude: createdSighting.placementLongitude,
+        },
+      })
+    }
     const result = await catVisionService.analyze({
       imageUrl,
       latitude: body.latitude,

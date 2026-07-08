@@ -7,7 +7,7 @@ import { MercatorCoordinate } from 'maplibre-gl'
 // ─────────────────────────────────────────────
 export const FLOWER_DECORATION_CONFIG = {
   layerId: 'flower-decorations',
-  count: 7000,
+  count: 10000,
   seed: 20260704,
   bounds: {
     west: 127.3544,
@@ -36,7 +36,6 @@ export const FLOWER_DECORATION_CONFIG = {
     [127.3620, 36.3628],
     [127.3582, 36.3628],
   ],
-  distribution: 'even',
   widthMetersRange: { min: 1.25, max: 1.75 },
   icons: [
     { url: '/decorations/flower-pink.png', weight: 3 },
@@ -96,7 +95,9 @@ function generateEvenFlowers(config, isOnAvoidedLayer) {
   const lngSpan = east - west
   const latSpan = north - south
   const aspect = lngSpan / latSpan
-  const oversample = 1.75
+  // densityBias가 켜져 있으면 중심부 후보가 가중 선택으로 솎아지고 나가므로,
+  // 중심 근처에 뽑을 후보가 충분히 남도록 그리드를 더 촘촘히 오버샘플한다.
+  const oversample = config.densityBias ? 2.2 : 1.75
   const columns = Math.ceil(Math.sqrt(config.count * aspect) * oversample)
   const rows = Math.ceil(Math.sqrt(config.count / aspect) * oversample)
   const candidates = []
@@ -113,12 +114,32 @@ function generateEvenFlowers(config, isOnAvoidedLayer) {
     }
   }
 
-  const count = Math.min(config.count, candidates.length)
-  const step = candidates.length / count
-  for (let i = 0; i < count; i++) {
-    const index = Math.min(candidates.length - 1, Math.floor((i + 0.5) * step))
+  const densityBias = config.densityBias
+  let selected
+  if (densityBias) {
+    // Weighted reservoir sampling(Efraimidis–Spirakis): 후보마다 중심에서의 거리로
+    // 가중치를 매기고, random()^(1/weight)를 키로 정렬해 위쪽 count개만 남긴다.
+    // 재추첨(rejection sampling) 없이 O(n log n)이라 2만 개 규모에서도 안전하다.
+    const keyed = candidates.map(([lng, lat]) => {
+      const distance = approxMetersBetween(densityBias.center[0], densityBias.center[1], lng, lat)
+      const weight = densityWeight(distance, densityBias)
+      return { lngLat: [lng, lat], key: Math.pow(random(), 1 / weight) }
+    })
+    keyed.sort((a, b) => b.key - a.key)
+    selected = keyed.slice(0, Math.min(config.count, keyed.length)).map((k) => k.lngLat)
+  } else {
+    const count = Math.min(config.count, candidates.length)
+    const step = candidates.length / count
+    selected = []
+    for (let i = 0; i < count; i++) {
+      const index = Math.min(candidates.length - 1, Math.floor((i + 0.5) * step))
+      selected.push(candidates[index])
+    }
+  }
+
+  for (const lngLat of selected) {
     flowers.push({
-      lngLat: candidates[index],
+      lngLat,
       iconUrl: weightedIcon(random, config.icons),
       widthMeters: min + random() * (max - min),
     })
@@ -128,43 +149,7 @@ function generateEvenFlowers(config, isOnAvoidedLayer) {
 }
 
 function generateFlowers(config, isOnAvoidedLayer) {
-  if (config.distribution === 'even') {
-    return generateEvenFlowers(config, isOnAvoidedLayer)
-  }
-
-  const random = seededRandom(config.seed)
-  const { west, south, east, north } = config.bounds
-  const { min, max } = config.widthMetersRange
-  const lngSpan = east - west
-  const latSpan = north - south
-  const densityBias = config.densityBias
-  const center = densityBias?.center ?? [(west + east) / 2, (south + north) / 2]
-  const maxAttemptsPerFlower = 25
-
-  const flowers = []
-  for (let i = 0; i < config.count; i++) {
-    for (let attempt = 0; attempt < maxAttemptsPerFlower; attempt++) {
-      const lng = west + random() * lngSpan
-      const lat = south + random() * latSpan
-
-      if (densityBias) {
-        const distance = approxMetersBetween(center[0], center[1], lng, lat)
-        if (random() > densityWeight(distance, densityBias)) continue // 중심에서 먼 곳일수록 확률적으로 재추첨
-      }
-      if (!isInsideIncludePolygon(lng, lat, config)) continue
-      if (isOnAvoidedLayer(lng, lat)) continue // 강/물 위면 재추첨
-
-      flowers.push({
-        lngLat: [lng, lat],
-        iconUrl: weightedIcon(random, config.icons),
-        widthMeters: min + random() * (max - min),
-      })
-      break
-    }
-    // maxAttemptsPerFlower를 다 쓰면 그 자리는 포기하고 다음 꽃으로 넘어간다
-    // (예: bounds 대부분이 물로 덮인 경우) — count보다 실제 꽃 수가 살짝 적을 수 있다.
-  }
-  return flowers
+  return generateEvenFlowers(config, isOnAvoidedLayer)
 }
 
 // 짝/홀 교차 규칙(ray casting)으로 점이 한 고리(ring) 안에 있는지 판정
