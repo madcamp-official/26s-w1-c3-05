@@ -1053,11 +1053,39 @@
         const canvas = document.querySelector('#camera-canvas')
         const cameraInput = document.querySelector('#camera-input')
         let activeStream = null
+        let currentZoom = 1.0
+        let hasNativeZoom = false
+
+        function applyZoom(value) {
+          if (hasNativeZoom) {
+            const track = activeStream?.getVideoTracks()[0]
+            if (track && typeof track.getCapabilities === 'function') {
+              const capabilities = track.getCapabilities()
+              if (capabilities.zoom) {
+                const min = capabilities.zoom.min || 1.0
+                const max = capabilities.zoom.max || 4.0
+                const targetZoom = Math.max(min, Math.min(max, value))
+                track.applyConstraints({ advanced: [{ zoom: targetZoom }] }).catch((e) => {
+                  console.warn('Failed to apply native zoom constraint:', e)
+                })
+              }
+            }
+            video.style.transform = 'scale(1.0)'
+          } else {
+            video.style.transform = `scale(${value})`
+          }
+        }
+
+        function resetZoom() {
+          currentZoom = 1.0
+          applyZoom(1.0)
+        }
 
         function stopCameraStream() {
           activeStream?.getTracks().forEach((track) => track.stop())
           activeStream = null
           video.srcObject = null
+          video.style.transform = 'scale(1.0)'
         }
 
         function showFallback(message) {
@@ -1089,6 +1117,16 @@
             })
             video.srcObject = activeStream
             await video.play()
+
+            const track = activeStream?.getVideoTracks()[0]
+            if (track && typeof track.getCapabilities === 'function') {
+              const capabilities = track.getCapabilities()
+              hasNativeZoom = !!capabilities.zoom
+            } else {
+              hasNativeZoom = false
+            }
+            resetZoom()
+
             fallback.hidden = true
           } catch (error) {
             console.warn('실시간 카메라를 열지 못했습니다.', error)
@@ -1103,6 +1141,43 @@
             window.dispatchEvent(new CustomEvent('catchme:3d-close'))
           }
         }
+
+        // 핀치 투 줌 터치 이벤트 등록
+        let initialPinchDistance = 0
+        let initialZoom = 1.0
+
+        camera.addEventListener('touchstart', (e) => {
+          if (window.is3DCameraActive) return
+          if (e.touches.length === 2) {
+            initialPinchDistance = Math.hypot(
+              e.touches[0].clientX - e.touches[1].clientX,
+              e.touches[0].clientY - e.touches[1].clientY
+            )
+            initialZoom = currentZoom
+          }
+        })
+
+        camera.addEventListener('touchmove', (e) => {
+          if (window.is3DCameraActive) return
+          if (e.touches.length === 2 && initialPinchDistance > 0) {
+            e.preventDefault()
+            const currentDistance = Math.hypot(
+              e.touches[0].clientX - e.touches[1].clientX,
+              e.touches[0].clientY - e.touches[1].clientY
+            )
+            const ratio = currentDistance / initialPinchDistance
+            let targetZoom = initialZoom * ratio
+            targetZoom = Math.max(1.0, Math.min(6.0, targetZoom))
+            currentZoom = targetZoom
+            applyZoom(currentZoom)
+          }
+        }, { passive: false })
+
+        camera.addEventListener('touchend', (e) => {
+          if (e.touches.length < 2) {
+            initialPinchDistance = 0
+          }
+        })
 
         document.querySelector('#camera-view-close').addEventListener('click', () => {
           window.hideCameraView()
@@ -1123,7 +1198,18 @@
           camera.classList.add('is-capturing')
           canvas.width = video.videoWidth
           canvas.height = video.videoHeight
-          canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+
+          const ctx = canvas.getContext('2d')
+          if (!hasNativeZoom && currentZoom > 1.0) {
+            // CSS 디지털 줌 상태인 경우 중앙 영역 크롭하여 그리기
+            const cropWidth = video.videoWidth / currentZoom
+            const cropHeight = video.videoHeight / currentZoom
+            const sx = (video.videoWidth - cropWidth) / 2
+            const sy = (video.videoHeight - cropHeight) / 2
+            ctx.drawImage(video, sx, sy, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height)
+          } else {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+          }
 
           canvas.toBlob((blob) => {
             shutter.disabled = false
