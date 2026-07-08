@@ -63,3 +63,14 @@ services:
 volumes:
   postgres-data:
   backend-uploads:
+
+networks:
+  # kcloud VM's host NIC runs at MTU 1450 (VXLAN/overlay overhead), but Docker's
+  # default bridge MTU is 1500. Left as default, that mismatch silently drops
+  # container-to-container packets bigger than a handshake (TCP connects, but
+  # actual HTTP payloads hang forever) — the daemon-wide "mtu" setting in
+  # daemon.json does NOT apply to compose-created networks, only to docker0, so
+  # it has to be set here explicitly.
+  default:
+    driver_opts:
+      com.docker.network.driver.mtu: 1450
