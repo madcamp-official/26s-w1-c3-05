@@ -3315,6 +3315,8 @@ document.querySelectorAll('[data-capture-retake]').forEach((button) => {
     event.preventDefault()
     event.stopPropagation()
 
+    console.log('🔄 다시 촬영(Retake) 버튼 클릭됨. 이전 카메라 모드:', lastCameraMode)
+
     // 결과 창 닫기
     const result = document.querySelector('#capture-result')
     if (result) result.hidden = true
