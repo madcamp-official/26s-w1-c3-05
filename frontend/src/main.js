@@ -3309,13 +3309,13 @@ fetch(`${API_BASE_URL}/api/health`)
     console.error('❌ 백엔드 서버 연동 실패:', err)
   })
 
-// 다시 촬영(Retake) 버튼 클릭 시 통합 처리 (3D 가상 카메라는 다시 3D로, 일반 카메라는 input click으로)
+// 다시 촬영(Retake) 버튼 클릭 시 통합 처리.
+// 감지 실패 화면에서도 직전에 쓰던 뷰파인더로 그대로 돌아가야 한다.
+// (예전에는 일반 카메라일 때 cameraInput.click()으로 OS 기본 카메라 앱이 열렸다.)
 document.querySelectorAll('[data-capture-retake]').forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault()
     event.stopPropagation()
-
-    console.log('🔄 다시 촬영(Retake) 버튼 클릭됨. 이전 카메라 모드:', lastCameraMode)
 
     // 결과 창 닫기
     const result = document.querySelector('#capture-result')
@@ -3325,9 +3325,17 @@ document.querySelectorAll('[data-capture-retake]').forEach((button) => {
     }
 
     if (lastCameraMode === 'virtual_3d') {
-      enable3DCameraMode()
+      // 3D는 오버레이(셔터·조준점)를 먼저 되살린 뒤 1인칭 카메라를 켠다.
+      // 오버레이가 hidden인 채로 enable3DCameraMode()만 부르면 촬영 UI가 사라진다.
+      cameraView.hidden = false
+      shutterBtn.disabled = false
+      cameraView.classList.remove('is-capturing')
+      if (!window.is3DCameraActive) enable3DCameraMode()
+    } else if (window.showCameraView) {
+      // 앱 내 뷰파인더 재진입 (cameraBtn 클릭과 동일한 경로)
+      window.showCameraView()
     } else {
-      document.querySelector('#camera-input')?.click()
+      cameraInput.click()
     }
   })
 })
