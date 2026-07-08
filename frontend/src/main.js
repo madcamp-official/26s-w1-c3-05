@@ -317,18 +317,18 @@ function followModeMaxViewRadiusMeters(latitude) {
   return (viewportDiagonalPx / 2) * metersPerPixel
 }
 
-async function fetchMapObjects() {
+async function fetchMapObjects(origin = markerLngLat()) {
   const params = new URLSearchParams({
-    lat: String(DEFAULT_QUERY_POSITION.lat),
-    lng: String(DEFAULT_QUERY_POSITION.lng),
-    radius: String(Math.round(followModeMaxViewRadiusMeters(DEFAULT_QUERY_POSITION.lat))),
+    lat: String(origin[1]),
+    lng: String(origin[0]),
+    radius: String(Math.round(followModeMaxViewRadiusMeters(origin[1]))),
   })
   const response = await authFetch(`/api/map/objects?${params}`)
   if (!response.ok) throw new Error('건물 정보를 불러오지 못했습니다.')
   return response.json()
 }
 
-async function fetchCatActors(origin = [DEFAULT_QUERY_POSITION.lng, DEFAULT_QUERY_POSITION.lat]) {
+async function fetchCatActors(origin = markerLngLat()) {
   const params = new URLSearchParams({
     lat: String(origin[1]),
     lng: String(origin[0]),
@@ -355,16 +355,42 @@ async function initMapActors() {
   if (mapActorsInitialized || !hasSession()) return
   mapActorsInitialized = true
 
+  const origin = markerLngLat()
   const [{ objects }, { cats }] = await Promise.all([
-    fetchMapObjects(),
-    fetchCatActors(),
+    fetchMapObjects(origin),
+    fetchCatActors(origin),
   ])
 
   objects.forEach(addMockBuildingMarker)
   animatedModelLayer.setBuildingActors(objects)
   syncCatMarkers(cats)
   animatedModelLayer.setCatActors(cats)
-  animatedModelLayer.setAvatarPosition([DEFAULT_QUERY_POSITION.lng, DEFAULT_QUERY_POSITION.lat])
+  animatedModelLayer.setAvatarPosition(origin)
+}
+
+function clearMockBuildingMarkers() {
+  for (const marker of mockBuildingMarkers.values()) marker.remove()
+  mockBuildingMarkers.clear()
+}
+
+// 처음 initMapActors()가 실행될 때는 아직 GPS를 못 받아 기본 좌표(캠퍼스 중앙)를 썼을
+// 수 있다. 실제 GPS 위치가 들어오면 캣타워/고양이를 그 위치 기준으로 다시 불러와서,
+// 캠퍼스 밖에서 접속해도 내 주변에 마커가 뜨게 한다(딱 한 번만).
+let mapActorsRefetchedForGps = false
+async function refetchMapActorsForGps(origin) {
+  if (mapActorsRefetchedForGps || !hasSession()) return
+  mapActorsRefetchedForGps = true
+  try {
+    const [{ objects }, { cats }] = await Promise.all([fetchMapObjects(origin), fetchCatActors(origin)])
+    clearMockBuildingMarkers()
+    objects.forEach(addMockBuildingMarker)
+    animatedModelLayer.setBuildingActors(objects)
+    syncCatMarkers(cats)
+    animatedModelLayer.setCatActors(cats)
+  } catch (error) {
+    mapActorsRefetchedForGps = false
+    console.warn('GPS 위치 기준 맵 데이터 재조회 실패:', error)
+  }
 }
 
 function tryInitMapActors() {
@@ -412,6 +438,7 @@ function applyOrbit() {
 
 map.on('moveend', () => {
   isTransitioning = false
+  animatedModelLayer.setAvatarTransitioning(false)
   setCatMarkerVisibility(isFollowing)
 })
 
@@ -427,6 +454,7 @@ function startPositionTracking() {
       userPosAccuracy = pos.coords.accuracy
       userPosUpdatedAt = Date.now()
       animatedModelLayer.setAvatarPosition(userPos)
+      refetchMapActorsForGps(userPos)
       // 마커 시점일 때는 카메라도 내 위치를 따라감.
       // GPS 좌표가 튀어도 화면이 순간이동하지 않게 부드럽게 이동한다.
       if (isFollowing && !isTransitioning) {
@@ -527,6 +555,7 @@ function toggleView() {
   isFollowing = !isFollowing
   isTransitioning = true
   animatedModelLayer.setFollowing(isFollowing)
+  animatedModelLayer.setAvatarTransitioning(true)
   setCatMarkerVisibility(false)
 
   if (isFollowing) {
@@ -534,8 +563,10 @@ function toggleView() {
     // 이동+줌인을 동시에 하면 easeTo(직선 보간)는 끝에서 옆으로 휙 쓸린다 →
     // flyTo의 최적 경로를 쓰되, 곡선 계수를 낮춰(기본 1.42) 뒤로 물러나는
     // 출렁임 없이 완만하게 파고들게 한다.
-    // 방위는 현재 값을 유지해 줌인 중 화면이 돌지 않게 한다.
-    orbitBearing = map.getBearing()
+    // 미쿠는 지도 기준 고정 방향(북쪽)을 항상 바라보므로, 로드뷰 진입 시 방위를 0으로
+    // 고정해야 매번 미쿠의 뒷모습을 보게 된다. 오버뷰에서 회전 제스처로 방위가 바뀐
+    // 채로 들어오면(map.getBearing() 유지) 얼굴/옆모습이 보일 수 있어 항상 리셋한다.
+    orbitBearing = 0
     orbitZoom = FOLLOW_START_ZOOM
     setDefaultGestures(false)
     map.flyTo({
@@ -1850,17 +1881,24 @@ dexGrid?.addEventListener('click', (event) => {
 // ── 프로필 통계(5-1 GET /profile/me): 도감 상단 발견/사진 수 + 프로필 이미지 ──
 const dexStats = document.querySelectorAll('.profile-dex-stats .profile-dex-stat strong')
 const dexAvatar = document.querySelector('.profile-dex-avatar')
+const sidebarDiscoveredCount = document.querySelector('.cat-menu-feature-copy strong')
 
 async function loadProfileStats() {
   try {
     const me = await getProfile()
     if (dexStats[0] && me.discoveredCount != null) dexStats[0].textContent = String(me.discoveredCount)
     if (dexStats[1] && me.sightingCount != null) dexStats[1].textContent = String(me.sightingCount)
+    if (sidebarDiscoveredCount && me.discoveredCount != null) {
+      sidebarDiscoveredCount.textContent = `${me.discoveredCount}마리`
+    }
     updateDisplayedAvatar(me.profileImageUrl)
   } catch (error) {
     console.warn('프로필을 불러오지 못했습니다.', error)
   }
 }
+
+// 사이드바(내 고양이 메뉴)를 열 때마다 발견한 고양이 수를 최신화한다.
+window.loadProfileStats = loadProfileStats
 
 // 도감을 열 때마다 최신 컬렉션과 프로필 통계를 다시 불러온다.
 const baseShowProfileDex = window.showProfileDex

@@ -52,8 +52,8 @@ const cats = [
     description: '캠퍼스 중앙도서관 근처에서 자주 보여요.',
     personality: '사람을 좋아해요',
     mainImageUrl: PLACEHOLDER_IMAGE,
-    lat: DEFAULT_LAT + 0.0006,
-    lng: DEFAULT_LNG + 0.0007,
+    latOffset: 0.00016,
+    lngOffset: 0.00014,
     zoneName: '중앙도서관',
     status: 'active',
     discovered: true,
@@ -67,8 +67,8 @@ const cats = [
     description: '밤에 주로 활동해요.',
     personality: '낯을 가려요',
     mainImageUrl: PLACEHOLDER_IMAGE,
-    lat: DEFAULT_LAT - 0.0008,
-    lng: DEFAULT_LNG - 0.0004,
+    latOffset: -0.0002,
+    lngOffset: -0.00011,
     zoneName: '학생회관',
     status: 'active',
     discovered: true,
@@ -82,8 +82,8 @@ const cats = [
     description: null,
     personality: null,
     mainImageUrl: null,
-    lat: DEFAULT_LAT + 0.0011,
-    lng: DEFAULT_LNG - 0.0009,
+    latOffset: 0.0003,
+    lngOffset: -0.00022,
     zoneName: 'IT융합빌딩',
     status: 'active',
     discovered: false,
@@ -97,8 +97,8 @@ const cats = [
     description: '캣타워 위에서 낮잠 자는 걸 좋아해요.',
     personality: '느긋해요',
     mainImageUrl: PLACEHOLDER_IMAGE,
-    lat: DEFAULT_LAT - 0.0003,
-    lng: DEFAULT_LNG + 0.0012,
+    latOffset: -0.00008,
+    lngOffset: 0.0003,
     zoneName: '교양분관',
     status: 'active',
     discovered: true,
@@ -114,8 +114,8 @@ const sightingsByCat = new Map(
           id: cat.id * 100 + n,
           catId: cat.id,
           imageUrl: PLACEHOLDER_IMAGE,
-          latitude: cat.lat,
-          longitude: cat.lng,
+          latitude: DEFAULT_LAT + cat.latOffset,
+          longitude: DEFAULT_LNG + cat.lngOffset,
           createdAt: new Date(Date.now() - n * 86_400_000).toISOString(),
         }))
       : [],
@@ -131,9 +131,9 @@ const CAT_MODEL_URL = {
 const BUSH_MODEL_URL = '/models/bush_01.glb'
 
 const buildings = [
-  { id: 1, type: 'landmark', name: '캣타워 A', lat: DEFAULT_LAT + 0.0004, lng: DEFAULT_LNG + 0.0003, modelKey: 'blue', description: '' },
-  { id: 2, type: 'landmark', name: '캣타워 B', lat: DEFAULT_LAT - 0.0005, lng: DEFAULT_LNG - 0.0006, modelKey: 'green', description: '' },
-]
+  { id: 1, type: 'landmark', name: '캣타워 A', latOffset: 0.00012, lngOffset: 0.00009, modelKey: 'blue', description: '' },
+  { id: 2, type: 'landmark', name: '캣타워 B', latOffset: -0.00015, lngOffset: -0.00018, modelKey: 'green', description: '' },
+].map((building) => ({ ...building, rotationY: Math.random() * Math.PI * 2 }))
 const TOWER_MODEL_URL = {
   blue: '/models/tower/cat_tower_blue_01_muted_unlit.glb',
   green: '/models/tower/cat_tower_green_01_muted_unlit.glb',
@@ -179,12 +179,12 @@ const collectionCat = (cat) => ({
   isFavorite: cat.isFavorite,
 })
 
-const catActor = (cat) => ({
+const catActor = (cat, origin) => ({
   catId: String(cat.id),
   displayType: cat.discovered ? 'discovered_cat' : 'undiscovered_recent',
   name: cat.discovered ? cat.name : null,
-  lat: cat.lat,
-  lng: cat.lng,
+  lat: origin.lat + cat.latOffset,
+  lng: origin.lng + cat.lngOffset,
   distanceMeters: 50,
   zoneId: null,
   zoneName: cat.zoneName,
@@ -203,18 +203,18 @@ const catActor = (cat) => ({
   mainImageUrl: cat.discovered ? cat.mainImageUrl : null,
 })
 
-const mapObjectItem = (building) => ({
+const mapObjectItem = (building, origin) => ({
   id: String(building.id),
   type: building.type,
   name: building.name,
-  lat: building.lat,
-  lng: building.lng,
+  lat: origin.lat + building.latOffset,
+  lng: origin.lng + building.lngOffset,
   distanceMeters: 100,
   modelType: 'building',
   modelKey: building.modelKey,
   modelUrl: TOWER_MODEL_URL[building.modelKey],
   modelScale: 1,
-  rotationY: 0,
+  rotationY: building.rotationY,
   radiusMeters: 5,
   description: building.description,
 })
@@ -349,11 +349,29 @@ app.post('/api/sightings', upload.single('image'), (req, res) => {
 app.post('/api/sightings/:photoId/confirm-cat', (_req, res) => res.json(matchedSightingResponse(DEFAULT_LAT, DEFAULT_LNG)))
 
 // ── Map ──
-app.get('/api/map/objects', (_req, res) => res.json({ objects: buildings.map(mapObjectItem) }))
+// 캣타워/고양이는 항상 "요청한 위치(실제 GPS 등)" 기준 상대 오프셋으로 배치한다.
+// lat/lng 쿼리를 무시하고 고정 좌표를 내려주면, 캠퍼스가 아닌 곳에서 접속했을 때
+// 마커가 사용자 주변이 아니라 엉뚱한 곳(먼 거리)에 나타나 버린다.
+function resolveOrigin(req) {
+  const lat = Number(req.query.lat)
+  const lng = Number(req.query.lng)
+  return {
+    lat: Number.isFinite(lat) ? lat : DEFAULT_LAT,
+    lng: Number.isFinite(lng) ? lng : DEFAULT_LNG,
+  }
+}
+
+app.get('/api/map/objects', (req, res) => {
+  const origin = resolveOrigin(req)
+  res.json({ objects: buildings.map((building) => mapObjectItem(building, origin)) })
+})
 
 app.get('/api/map/cat-actors', (req, res) => {
+  const origin = resolveOrigin(req)
   const includeUndiscovered = req.query.includeUndiscovered !== 'false'
-  res.json({ cats: cats.filter((cat) => includeUndiscovered || cat.discovered).map(catActor) })
+  res.json({
+    cats: cats.filter((cat) => includeUndiscovered || cat.discovered).map((cat) => catActor(cat, origin)),
+  })
 })
 
 // ── Misc ──

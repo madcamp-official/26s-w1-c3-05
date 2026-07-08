@@ -11,6 +11,16 @@ const clamp = (value, minimum, maximum) =>
 // 미쿠가 항상 바라보는 지도 기준 방향(북쪽).
 // 시점 전환 시 미쿠가 돌아보는 게 아니라, 원래 그쪽을 보고 있던 것처럼 보인다.
 const AVATAR_WORLD_HEADING = Math.PI
+// 고양이와 같은 줌 기준 크기 곡선을 쓰되, 미쿠만 이 배율만큼 더 크게 그린다.
+// 3.0은 너무 커서(고양이 대비 3배) 체감상 거대해 보였음 — 절반 정도로 줄임.
+const AVATAR_SIZE_MULTIPLIER = 1.6
+// 로드뷰(팔로우)에서는 미쿠가 1.2배 더 크게 보인다. isFollowing 불리언으로 즉시 바꾸면
+// 더블탭 순간 크기가 툭 튀어(팝) 버리므로, 줌 값을 따라 오버뷰→로드뷰 구간에서
+// 1.0배→1.2배로 연속적으로 보간한다(다른 모든 크기 계산과 같은 줌 곡선 사용).
+const AVATAR_FOLLOW_SIZE_BOOST = 1.2
+// 오버뷰(항공뷰)에서는 실제 원근 비율대로면 너무 작아 보여서, 오버뷰 줌에서만 2배로
+// 키운다. 로드뷰 구간(줌 18 이상)에서는 1.0배로 돌아와 로드뷰 크기엔 영향 없다.
+const AVATAR_OVERVIEW_SIZE_BOOST = 2.0
 
 const MODEL_BASE_ZOOM = 14.1
 const MODEL_ZOOM_EXPONENT = 0.41
@@ -461,12 +471,22 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
     position: null,
     heading: Math.PI,
     visibilityProgress: 0,
-    visibilityTarget: 0,
+    // 미쿠는 팔로우/오버뷰 전환과 무관하게 항상 보인다 (크기만 줌에 따라 자연스럽게 변한다).
+    // 로드뷰로 들어갈 때 사라졌다 나타나는 대신, flyTo 애니메이션 동안 매 프레임 줌값을 따라
+    // 자연스럽게 확대되는 느낌을 준다.
+    visibilityTarget: 1,
+    isFollowing: false,
 
     setFollowing(isFollowing) {
-      this.visibilityTarget = isFollowing ? 1 : 0
+      this.isFollowing = Boolean(isFollowing)
       if (this.scene) this.scene.visible = true
       this.map?.triggerRepaint?.()
+    },
+
+    // 카메라가 flyTo로 이동하는 동안에는 idle(숨쉬기) 애니메이션을 멈춰서,
+    // 확대/축소 중 모델이 커지는 동시에 까딱거려 "바운스"처럼 보이는 걸 막는다.
+    setTransitioning(isTransitioning) {
+      this.frozen = Boolean(isTransitioning)
     },
 
     setPosition(position) {
@@ -564,26 +584,10 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       this.renderer.outputColorSpace = THREE.SRGBColorSpace
 
       this.model = cloneModel(template)
-      
-      const points = []
-      for (let i = 0; i < 64; i += 1) {
-        const angle = (i / 64) * Math.PI * 2
-        points.push(new THREE.Vector3(Math.cos(angle) * 2.4, 0, Math.sin(angle) * 2.4))
-      }
-      const ring = new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(points),
-        new THREE.LineBasicMaterial({
-          color: 0xffffff,
-          transparent: true,
-          opacity: 0.8,
-        })
-      )
-      ring.position.y = 0.01
-      
+
       this.root = new THREE.Group()
       this.root.matrixAutoUpdate = false
       this.root.add(this.model)
-      this.root.add(ring)
       this.scene.add(this.root)
 
       if (animations?.length) {
@@ -605,7 +609,21 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       if (!this.position || !this.originCoordinate) return new THREE.Matrix4()
       const coordinate = MercatorCoordinate.fromLngLat(this.position, 0)
       const visibilityScale = this.visibilityProgress * this.visibilityProgress * (3 - 2 * this.visibilityProgress)
-      const scale = coordinate.meterInMercatorCoordinateUnits() * this.modelHeightMeters() * 3.0 * visibilityScale
+      const zoom = this.map?.getZoom?.() ?? CAT_WORLD_SCALE_ZOOM_START
+      const followT = clamp(
+        (zoom - CAT_WORLD_SCALE_ZOOM_START) / (CAT_WORLD_SCALE_ZOOM_END - CAT_WORLD_SCALE_ZOOM_START),
+        0,
+        1
+      )
+      const followSizeBoost = 1 + (AVATAR_FOLLOW_SIZE_BOOST - 1) * followT
+      const overviewSizeBoost = AVATAR_OVERVIEW_SIZE_BOOST + (1 - AVATAR_OVERVIEW_SIZE_BOOST) * followT
+      const scale =
+        coordinate.meterInMercatorCoordinateUnits() *
+        this.modelHeightMeters() *
+        AVATAR_SIZE_MULTIPLIER *
+        followSizeBoost *
+        overviewSizeBoost *
+        visibilityScale
       const mapBearing = (this.map.getBearing() * Math.PI) / 180
 
       const matrix = new THREE.Matrix4()
@@ -643,7 +661,9 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       )
       this.camera.projectionMatrix = mapMatrix.multiply(originMatrix)
 
-      for (const mixer of this.mixers) mixer.update(delta)
+      if (!this.frozen) {
+        for (const mixer of this.mixers) mixer.update(delta)
+      }
 
       this.renderer.resetState()
       this.renderer.render(this.scene, this.camera)
@@ -675,6 +695,10 @@ export function createAnimatedModelLayer(map) {
       this.isFollowing = Boolean(isFollowing)
       if (this.catWorldLayer) this.catWorldLayer.setFollowing(this.isFollowing)
       if (this.avatarWorldLayer) this.avatarWorldLayer.setFollowing(this.isFollowing)
+    },
+
+    setAvatarTransitioning(isTransitioning) {
+      this.avatarWorldLayer?.setTransitioning(isTransitioning)
     },
 
     isAvatarHit(point, radiusPx = 78) {
