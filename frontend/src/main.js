@@ -71,9 +71,7 @@ const map = new maplibregl.Map({
   preserveDrawingBuffer: true,
 })
 
-const animatedModelLayer = createAnimatedModelLayer(map) // TEMP_DEBUG
-window.__map = map // TEMP_DEBUG
-window.__layer = animatedModelLayer // TEMP_DEBUG
+const animatedModelLayer = createAnimatedModelLayer(map)
 const mockBuildingMarkers = new Map()
 const MOCK_MAP_MODE = false
 
