@@ -966,7 +966,21 @@ map.on('click', (e) => {
   // 스와이프/핀치 직후의 click만 무시 (실수 토글 방지)
   if (Date.now() - lastGestureTime < GESTURE_CLICK_IGNORE_MS) return
   if (animatedModelLayer.isAvatarHit(e.point)) {
-    if (animatedModelLayer.playAvatarAnimation('excited_jump')) {
+    const rand = Math.random()
+    let animPlayed = false
+
+    if (rand < 0.10) {
+      // 10% 확률로 Crying 애니메이션 및 표정 재생
+      animPlayed = animatedModelLayer.playAvatarAnimation('crying')
+    } else if (rand < 0.20) {
+      // 10% 확률로 Excited_Jump 애니메이션에 matakke 표정을 씌워 재생
+      animPlayed = animatedModelLayer.playAvatarAnimation('excited_jump', 'matakke')
+    } else {
+      // 80% 확률로 기존 손흔들기(excited_jump) 애니메이션 재생
+      animPlayed = animatedModelLayer.playAvatarAnimation('excited_jump')
+    }
+
+    if (animPlayed) {
       lastTapTime = 0
       lastTapPoint = null
       return

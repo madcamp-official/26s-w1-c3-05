@@ -118,6 +118,9 @@ const ANIMATION_EXPRESSION_MAP = {
   idle: 'chatgpt_happy',
   walk_inplace: 'neutral',
   excited_jump: 'face_smiling_closed',
+  crying: 'crying',
+  angry: 'angry',
+  surprised: 'surprise',
 }
 
 function distanceMeters(from, to) {
@@ -868,7 +871,7 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       this.map?.triggerRepaint?.()
     },
 
-    playAnimation(name) {
+    playAnimation(name, expressionOverride) {
       if (!this.mixer || !animations?.length) return false
       const clip = animations.find((c) => c.name.toLowerCase() === name.toLowerCase()) ??
         animations.find((c) => c.name.toLowerCase().includes(name.toLowerCase()))
@@ -883,7 +886,9 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
 
       action.reset().fadeIn(0.2).play()
       this.activeAction = action
-      this.applyExpression(ANIMATION_EXPRESSION_MAP[clip.name.toLowerCase()])
+      
+      const expr = expressionOverride || ANIMATION_EXPRESSION_MAP[clip.name.toLowerCase()]
+      this.applyExpression(expr)
 
       const returnToIdle = () => {
         this.mixer.removeEventListener('finished', returnToIdle)
@@ -1150,9 +1155,9 @@ export function createAnimatedModelLayer(map) {
       return false
     },
 
-    playAvatarAnimation(name = 'excited_jump') {
+    playAvatarAnimation(name = 'excited_jump', expressionOverride) {
       if (this.avatarWorldLayer) {
-        return this.avatarWorldLayer.playAnimation(name)
+        return this.avatarWorldLayer.playAnimation(name, expressionOverride)
       }
       return false
     },
