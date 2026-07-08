@@ -907,12 +907,7 @@
           button.addEventListener('click', closeCaptureResult)
         })
 
-        document.querySelectorAll('[data-capture-retake]').forEach((button) => {
-          button.addEventListener('click', () => {
-            closeCaptureResult()
-            document.querySelector('#camera-input')?.click()
-          })
-        })
+        // data-capture-retake 처리는 main.js에서 통합 제어하므로 이벤트를 제거합니다.
 
         document.querySelectorAll('[data-preview-result]').forEach((button) => {
           button.addEventListener('click', () => showCaptureResult(button.dataset.previewResult))

@@ -3309,18 +3309,23 @@ fetch(`${API_BASE_URL}/api/health`)
     console.error('❌ 백엔드 서버 연동 실패:', err)
   })
 
-// 다시 촬영(Retake) 버튼 클릭 시, 3D 카메라 모드에서 촬영한 것이면 3D 카메라를 다시 실행한다.
+// 다시 촬영(Retake) 버튼 클릭 시 통합 처리 (3D 가상 카메라는 다시 3D로, 일반 카메라는 input click으로)
 document.querySelectorAll('[data-capture-retake]').forEach((button) => {
   button.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    // 결과 창 닫기
+    const result = document.querySelector('#capture-result')
+    if (result) result.hidden = true
+    if (window.location.hash.startsWith('#capture-')) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
+
     if (lastCameraMode === 'virtual_3d') {
-      event.preventDefault()
-      event.stopPropagation()
-      const result = document.querySelector('#capture-result')
-      if (result) result.hidden = true
-      if (window.location.hash.startsWith('#capture-')) {
-        window.history.replaceState(null, '', window.location.pathname + window.location.search)
-      }
       enable3DCameraMode()
+    } else {
+      document.querySelector('#camera-input')?.click()
     }
   })
 })
