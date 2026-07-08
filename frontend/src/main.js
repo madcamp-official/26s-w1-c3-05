@@ -477,8 +477,36 @@ async function fetchCatActors(origin = markerLngLat()) {
 // 도감 고양이 마커를 복구하는 데 쓴다.
 let lastCatActors = []
 
-// 지도 마커의 진짜 소스는 "도감에 등록된 고양이"다. 내가 찍은 사진이 없어도 마커가 떠야 하고,
-// 사진이 있어도 마커는 사진을 찍은 자리가 아니라 고양이가 서 있는 placement 위에 있어야 한다.
+// 이 고양이를 찍은 사진들(누가 찍었든 이 기기에 남아있는 것 전부). 마커의 썸네일과
+// 마커를 눌렀을 때 뜨는 사진첩이 여기서 나온다.
+function photosForCat(catId) {
+  return catPhotos
+    .filter((photo) => String(photo.catId ?? '') === String(catId))
+    .sort(newestPhotoFirst)
+}
+
+// 마커에 달린 사진 목록을 catPhotos에서 다시 계산해 붙인다.
+// 사진이 하나도 없으면 고양이 대표 사진을 썸네일로 쓴다.
+function syncGroupPhotos(group, fallbackImageUrl = null) {
+  group.photos = photosForCat(group.catId)
+  group.count = group.photos.length
+
+  const representative = group.photos[0]
+  const dataUrl = representative?.dataUrl ?? fallbackImageUrl ?? group.dataUrl
+  if (dataUrl && dataUrl !== group.dataUrl) {
+    group.dataUrl = dataUrl
+    group.image.src = dataUrl
+  }
+  group.representativeCreatedAt = representative?.createdAt ?? null
+
+  updateMarkerGroupPresentation(group)
+}
+
+// 마커가 뜨는 조건은 딱 하나 — "그 고양이가 내 도감에 있는가"(displayType === 'discovered_cat').
+// 사진을 누가 찍었는지는 무관하다. 같은 기기에 다른 계정이 찍어둔 사진이 남아 있어도,
+// 그 고양이가 내 도감에 없으면 마커는 뜨지 않는다. 반대로 내 도감에 있으면 그 사진을
+// 썸네일과 사진첩에 그대로 쓴다.
+// 위치도 사진을 찍은 자리가 아니라 고양이가 실제로 서 있는 placement 좌표를 쓴다.
 function syncCatActorMarkers(actors) {
   lastCatActors = actors
   const discovered = actors.filter((actor) => actor.displayType === 'discovered_cat')
@@ -491,15 +519,11 @@ function syncCatActorMarkers(actors) {
     if (group) {
       group.position = position
       group.markerInstance?.setLngLat(position)
-      // 아직 내 사진이 없는 마커는 고양이 대표 사진을 계속 따라간다.
-      if (group.photos.length === 0 && actor.mainImageUrl) {
-        group.dataUrl = actor.mainImageUrl
-        group.image.src = actor.mainImageUrl
-      }
+      syncGroupPhotos(group, actor.mainImageUrl ?? null)
       continue
     }
 
-    createMarkerGroup({
+    const created = createMarkerGroup({
       key: `cat-${actor.catId}`,
       position,
       accuracy: DEFAULT_GPS_ACCURACY_METERS,
@@ -509,12 +533,14 @@ function syncCatActorMarkers(actors) {
       photos: [],
       animate: false,
     })
+    syncGroupPhotos(created, actor.mainImageUrl ?? null)
   }
 
-  // 도감에서 빠졌거나 조회 반경 밖으로 나간 "내 사진이 없는" 마커는 정리한다.
-  // 내가 찍은 사진이 있는 마커는 반경과 무관하게 남긴다.
+  // 내 도감에 없는 고양이(수풀로 보이는 미발견 개체)나 조회 반경 밖으로 나간 고양이의
+  // 마커는 지운다. 이 기기에 그 고양이 사진이 남아있어도 마찬가지다 — 사진의 존재가
+  // 아니라 도감 등록 여부가 마커의 근거다.
   for (const [key, group] of photoMarkerGroups) {
-    if (group.photos.length > 0 || group.catId == null) continue
+    if (group.catId == null) continue // catId를 모르는 레거시 사진 마커는 위치 기준으로 유지
     if (discoveredIds.has(String(group.catId))) continue
     group.markerInstance?.remove()
     photoMarkerGroups.delete(key)
@@ -1438,11 +1464,18 @@ function addPhotoMarker(photo, animate = true) {
     return
   }
 
+  // 어떤 고양이인지 아는 사진은 마커를 스스로 만들지 않는다. 마커는 도감에 등록된
+  // 고양이에만 붙고, 그건 syncCatActorMarkers가 판단한다. 여기서 만들어버리면 이 기기에
+  // 다른 계정이 남긴 사진 때문에 "내 도감에 없는 고양이"의 마커가 뜬다.
+  // 도감에 있는 고양이라면 syncCatActorMarkers가 마커를 만들며 이 사진을 붙여준다.
+  if (photo.catId != null && String(photo.catId) !== '') return
+
+  // catId를 모르는 레거시 사진만 위치 기준 마커를 그대로 만든다.
   createMarkerGroup({
     key: photo.id,
     position: photo.position,
     accuracy: photoAccuracy,
-    catId: photo.catId ?? null,
+    catId: null,
     dataUrl: photo.dataUrl,
     representativeCreatedAt: photo.createdAt,
     photos: [photo],
