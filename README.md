@@ -85,7 +85,7 @@
 
 ---
 
-## 배포 결과물
+## URL
 - **https://catchme-rosy.vercel.app/**
 
 ## 회고 문서
