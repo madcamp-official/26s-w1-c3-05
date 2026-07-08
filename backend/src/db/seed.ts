@@ -59,15 +59,36 @@ await run(
     (id, name, description, representative_photo_url, pattern, personality, default_latitude, default_longitude, default_zone_id, status)
    VALUES (3, '밤이', '늦은 시간 기숙사 길목에서 자주 보이는 조용한 고양이.', 'https://images.unsplash.com/photo-1543852786-1cf6624b9987?auto=format&fit=crop&w=500&q=80', 'black', '조용하고 신중함', 36.3734, 127.3615, 3, 'active')`,
 )
+await run(
+  `INSERT INTO cats
+    (id, name, description, representative_photo_url, pattern, personality, default_latitude, default_longitude, default_zone_id, status)
+   VALUES (4, '뚱이', '서측 기숙사 주변을 서성이는 뚱뚱하고 듬직한 고양이.', 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=500&q=80', 'cheese', '먹을 것을 밝힘', 36.36715, 127.35895, 12, 'active')`,
+)
+await run(
+  `INSERT INTO cats
+    (id, name, description, representative_photo_url, pattern, personality, default_latitude, default_longitude, default_zone_id, status)
+   VALUES (5, '페페', '오리연못 근처에서 사람들을 구경하는 시크한 턱시도 고양이.', 'https://images.unsplash.com/photo-1533738363-b7f9aef128ce?auto=format&fit=crop&w=500&q=80', 'tuxedo', '도도하고 시크함', 36.36735, 127.36345, 4, 'active')`,
+)
+await run(
+  `INSERT INTO cats
+    (id, name, description, representative_photo_url, pattern, personality, default_latitude, default_longitude, default_zone_id, status)
+   VALUES (6, '퐁듀', '생활관 언덕 잔디밭에서 낮잠 자는 것을 즐기는 삼색이 고양이.', 'https://images.unsplash.com/photo-1573865526739-10659fec78a5?auto=format&fit=crop&w=500&q=80', 'calico', '여유롭고 잠이 많음', 36.3733, 127.3615, 3, 'active')`,
+)
 
 await seedPhoto(1, 1, 1, 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&w=500&q=80', 36.3726, 127.3603, 1, '2026-07-01T12:20:00+09:00', true)
 await seedPhoto(2, 1, 2, 'https://images.unsplash.com/photo-1511044568932-338cba0ad803?auto=format&fit=crop&w=500&q=80', 36.3717, 127.3611, 2, '2026-07-01T18:02:00+09:00', true)
 await seedPhoto(3, 3, 3, 'https://images.unsplash.com/photo-1543852786-1cf6624b9987?auto=format&fit=crop&w=500&q=80', 36.3734, 127.3615, 3, '2026-06-30T21:15:00+09:00', true)
 await seedPhoto(4, 1, 3, 'https://images.unsplash.com/photo-1555685812-4b943f1cb0eb?auto=format&fit=crop&w=500&q=80', 36.3736, 127.3617, 3, '2026-06-26T19:45:00+09:00', false)
+await seedPhoto(5, 1, 4, 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=500&q=80', 36.36715, 127.35895, 12, '2026-07-02T10:00:00+09:00', true)
+await seedPhoto(6, 1, 5, 'https://images.unsplash.com/photo-1533738363-b7f9aef128ce?auto=format&fit=crop&w=500&q=80', 36.36735, 127.36345, 4, '2026-07-02T11:15:00+09:00', true)
+await seedPhoto(7, 1, 6, 'https://images.unsplash.com/photo-1573865526739-10659fec78a5?auto=format&fit=crop&w=500&q=80', 36.3733, 127.3615, 3, '2026-07-02T14:30:00+09:00', true)
 
 await upsertCollection({ userId: 1, catId: 1, photoId: 1, seenAt: '2026-07-01T12:20:00+09:00' })
 await upsertCollection({ userId: 1, catId: 3, photoId: 4, seenAt: '2026-06-26T19:45:00+09:00' })
 await upsertCollection({ userId: 3, catId: 2, photoId: 2, seenAt: '2026-07-01T18:02:00+09:00' })
+await upsertCollection({ userId: 1, catId: 4, photoId: 5, seenAt: '2026-07-02T10:00:00+09:00' })
+await upsertCollection({ userId: 1, catId: 5, photoId: 6, seenAt: '2026-07-02T11:15:00+09:00' })
+await upsertCollection({ userId: 1, catId: 6, photoId: 7, seenAt: '2026-07-02T14:30:00+09:00' })
 
   const offset1 = applyRandomOffset(36.3726, 127.3603)
   await upsertPlacement({ catId: 1, sourceSightingId: 1, latitude: offset1.latitude, longitude: offset1.longitude, zoneId: 1 })
@@ -75,9 +96,19 @@ await upsertCollection({ userId: 3, catId: 2, photoId: 2, seenAt: '2026-07-01T18
   await upsertPlacement({ catId: 2, sourceSightingId: 2, latitude: offset2.latitude, longitude: offset2.longitude, zoneId: 2 })
   const offset3 = applyRandomOffset(36.3734, 127.3615)
   await upsertPlacement({ catId: 3, sourceSightingId: 3, latitude: offset3.latitude, longitude: offset3.longitude, zoneId: 3 })
+  const offset4 = applyRandomOffset(36.36715, 127.35895)
+  await upsertPlacement({ catId: 4, sourceSightingId: 5, latitude: offset4.latitude, longitude: offset4.longitude, zoneId: 12 })
+  const offset5 = applyRandomOffset(36.36735, 127.36345)
+  await upsertPlacement({ catId: 5, sourceSightingId: 6, latitude: offset5.latitude, longitude: offset5.longitude, zoneId: 4 })
+  const offset6 = applyRandomOffset(36.3733, 127.3615)
+  await upsertPlacement({ catId: 6, sourceSightingId: 7, latitude: offset6.latitude, longitude: offset6.longitude, zoneId: 3 })
+
 await run("UPDATE cat_placements SET surface = 'roof', anchor_key = 'roof_center', height_offset_meters = 12, movement_radius_meters = 5, animation_key = 'sit' WHERE cat_id = 1")
 await run("UPDATE cat_placements SET surface = 'ground', anchor_key = 'entrance', height_offset_meters = 0, movement_radius_meters = 7, animation_key = 'walk' WHERE cat_id = 2")
 await run("UPDATE cat_placements SET surface = 'roof', anchor_key = 'roof_edge', height_offset_meters = 10, movement_radius_meters = 4, animation_key = 'sleep' WHERE cat_id = 3")
+await run("UPDATE cat_placements SET surface = 'roof', anchor_key = 'roof_center', height_offset_meters = 12, movement_radius_meters = 4, animation_key = 'sit' WHERE cat_id = 4")
+await run("UPDATE cat_placements SET surface = 'ground', anchor_key = 'entrance', height_offset_meters = 0, movement_radius_meters = 6, animation_key = 'walk' WHERE cat_id = 5")
+await run("UPDATE cat_placements SET surface = 'roof', anchor_key = 'roof_edge', height_offset_meters = 10, movement_radius_meters = 3, animation_key = 'sleep' WHERE cat_id = 6")
 
 await syncSerialSequences()
 
