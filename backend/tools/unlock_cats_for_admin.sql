@@ -21,49 +21,36 @@ BEGIN
     RETURNING id INTO v_user_id;
   END IF;
 
-  -- 3. 뚱이 해금 (admin & catlover123)
-  SELECT id INTO v_cat_id FROM cats WHERE name = '뚱이' LIMIT 1;
-  IF v_cat_id IS NOT NULL THEN
-    SELECT id INTO v_photo_id FROM cat_photos WHERE cat_id = v_cat_id LIMIT 1;
+  -- 3. 모든 고양이 (1..6)에 대해 admin과 catlover123 계정에 목격담(sighting) 및 도감 컬렉션(collection) 생성
+  FOR v_cat_id IN 1..6 LOOP
+    -- 각 고양이의 대표 사진 ID 조회
+    SELECT id INTO v_photo_id FROM cat_photos WHERE cat_id = v_cat_id AND is_representative = TRUE LIMIT 1;
+    
     IF v_photo_id IS NOT NULL THEN
+      -- 도감 컬렉션 생성 (admin)
       INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
       VALUES (v_admin_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, cat_id) DO NOTHING;
 
+      -- 도감 컬렉션 생성 (catlover123)
       INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
       VALUES (v_user_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, cat_id) DO NOTHING;
+
+      -- 지도 마커용 목격담 생성 (admin)
+      IF NOT EXISTS (SELECT 1 FROM cat_sightings WHERE cat_id = v_cat_id AND user_id = v_admin_id) THEN
+        INSERT INTO cat_sightings (cat_id, user_id, photo_id, latitude, longitude, zone_id, seen_at)
+        SELECT v_cat_id, v_admin_id, v_photo_id, latitude, longitude, zone_id, taken_at
+        FROM cat_photos WHERE id = v_photo_id;
+      END IF;
+
+      -- 지도 마커용 목격담 생성 (catlover123)
+      IF NOT EXISTS (SELECT 1 FROM cat_sightings WHERE cat_id = v_cat_id AND user_id = v_user_id) THEN
+        INSERT INTO cat_sightings (cat_id, user_id, photo_id, latitude, longitude, zone_id, seen_at)
+        SELECT v_cat_id, v_user_id, v_photo_id, latitude, longitude, zone_id, taken_at
+        FROM cat_photos WHERE id = v_photo_id;
+      END IF;
     END IF;
-  END IF;
-
-  -- 4. 페페 해금 (admin & catlover123)
-  SELECT id INTO v_cat_id FROM cats WHERE name = '페페' LIMIT 1;
-  IF v_cat_id IS NOT NULL THEN
-    SELECT id INTO v_photo_id FROM cat_photos WHERE cat_id = v_cat_id LIMIT 1;
-    IF v_photo_id IS NOT NULL THEN
-      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
-      VALUES (v_admin_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
-      ON CONFLICT (user_id, cat_id) DO NOTHING;
-
-      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
-      VALUES (v_user_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
-      ON CONFLICT (user_id, cat_id) DO NOTHING;
-    END IF;
-  END IF;
-
-  -- 5. 퐁듀 해금 (admin & catlover123)
-  SELECT id INTO v_cat_id FROM cats WHERE name = '퐁듀' LIMIT 1;
-  IF v_cat_id IS NOT NULL THEN
-    SELECT id INTO v_photo_id FROM cat_photos WHERE cat_id = v_cat_id LIMIT 1;
-    IF v_photo_id IS NOT NULL THEN
-      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
-      VALUES (v_admin_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
-      ON CONFLICT (user_id, cat_id) DO NOTHING;
-
-      INSERT INTO user_cat_collections (user_id, cat_id, discovery_photo_id, representative_photo_id, first_discovered_at)
-      VALUES (v_user_id, v_cat_id, v_photo_id, v_photo_id, CURRENT_TIMESTAMP)
-      ON CONFLICT (user_id, cat_id) DO NOTHING;
-    END IF;
-  END IF;
+  END LOOP;
 
 END $$;
