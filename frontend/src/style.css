@@ -3945,6 +3945,15 @@ body {
     linear-gradient(160deg, #d7ecb8 0%, #c7e6ad 55%, #d3ecbe 100%);
 }
 
+.cat-detail-map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.cat-detail-map-canvas .maplibregl-ctrl-attrib {
+  font-size: 9px;
+}
+
 .cat-detail-map-pin {
   position: absolute;
   top: 50%;

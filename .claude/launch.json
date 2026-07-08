@@ -8,6 +8,12 @@
       "port": 5199
     },
     {
+      "name": "frontend-dev-5173",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--port", "5173", "--strictPort", "--host"],
+      "port": 5173
+    },
+    {
       "name": "backend-mock-api",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "backend", "run", "api:mock"],

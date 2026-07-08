@@ -209,9 +209,23 @@ function addMockBuildingMarker(object) {
 // 항공뷰처럼 화면상 거리가 가까워지는 줌에서는 캣타워 라벨이 서로 겹쳐 가려진다.
 // 실제 좌표(setLngLat)는 그대로 두고, 화면 픽셀 오프셋(setOffset)만 밀어내는 방식이라
 // 확대해서 원래 좌표 간격이 벌어지면 자연히 오프셋이 0으로 돌아온다.
+// (항공뷰 전용 — 로드뷰는 아래 별도 로직을 쓴다. 이유는 declutterBuildingMarkers 참고.)
 const BUILDING_MARKER_MIN_SEPARATION_PX = 64
 const BUILDING_MARKER_DECLUTTER_ITERATIONS = 6
 const GOLDEN_ANGLE_RADIANS = 2.399963
+
+// 로드뷰의 "화면 안에 있으면 후보"라는 온스크린 판정만으로는 부족하다 — 피치가
+// 거의 수평(72도)에 가까울 땐 아주 먼 곳(수백m 밖, 3D 모델이 실제로는 안 그려질
+// 만큼 먼 곳)도 지평선 쪽으로 수학적으로는 화면 안에 투영돼 버린다. 그 상태로
+// 이름표만 뜨면 옆에 타워 모델도 없이 하늘 위에 이름만 둥둥 뜬 것처럼 보인다.
+// 그래서 "지금 줌에서 실제로 타워가 보일 만한 거리"를 따로 두고 그 밖은 제외한다.
+// 줌아웃할수록(멀리 볼수록) 이 거리도 늘어난다.
+const BUILDING_LABEL_MAX_DISTANCE_CLOSE_METERS = 250 // FOLLOW_MAX_ZOOM(바짝 확대)일 때
+const BUILDING_LABEL_MAX_DISTANCE_FAR_METERS = 900 // FOLLOW_MIN_ZOOM(멀리 축소)일 때
+
+// 미쿠 기준 방위각 차이가 이 안이면 "한 직선 상"으로 보고, 그중 가장 가까운
+// 캣타워 하나만 이름표를 남긴다(뒤에 가려진 건물까지 이름이 겹쳐 뜨지 않게).
+const BUILDING_LABEL_CLUSTER_ANGLE_DEG = 15
 
 // 마커는 anchor: 'bottom'이라 타워 밑동(지면 좌표)에 그대로 두면 3D 타워 몸체를
 // 통째로 가려버린다. 타워 위로 띄워서 이름표처럼 보이게 한다. 로드뷰로 다가갈수록
@@ -220,61 +234,152 @@ const BUILDING_MARKER_OVERVIEW_LIFT = -20
 const BUILDING_MARKER_FOLLOW_MIN_LIFT = -35
 const BUILDING_MARKER_FOLLOW_MAX_LIFT = -120
 
-function buildingMarkerLift() {
-  if (!isFollowing) return BUILDING_MARKER_OVERVIEW_LIFT
+// 로드뷰 줌 → 0~1 (0=최대 축소, 1=최대 확대). 라벨 거리 상한과 lift 둘 다
+// 이 값으로 보간하므로 한 군데서 계산해 공유한다.
+function followZoomEase() {
   const t = clamp((map.getZoom() - FOLLOW_MIN_ZOOM) / (FOLLOW_MAX_ZOOM - FOLLOW_MIN_ZOOM), 0, 1)
-  const eased = t * t * (3 - 2 * t)
+  return t * t * (3 - 2 * t)
+}
+
+function buildingLabelMaxDistance() {
+  const eased = followZoomEase()
   return (
-    BUILDING_MARKER_FOLLOW_MIN_LIFT +
-    (BUILDING_MARKER_FOLLOW_MAX_LIFT - BUILDING_MARKER_FOLLOW_MIN_LIFT) * eased
+    BUILDING_LABEL_MAX_DISTANCE_FAR_METERS -
+    (BUILDING_LABEL_MAX_DISTANCE_FAR_METERS - BUILDING_LABEL_MAX_DISTANCE_CLOSE_METERS) * eased
   )
 }
 
+// distanceMeters: 로드뷰에서만 의미 있음(그 캣타워가 미쿠로부터 실제로 얼마나 먼지).
+// 줌만 보고 모든 라벨에 같은 lift를 주면, 멀리 있어서 화면엔 작게(지평선 가까이)
+// 보이는 캣타워까지 크게 띄우게 되어 하늘 위로 붕 뜬 것처럼 보인다. 그래서 가까울수록
+// (=화면에서 크게 보일수록) lift를 다 주고, 멀어질수록(=위 거리 상한에 가까워질수록) 0에 가깝게 줄인다.
+function buildingMarkerLift(distanceMeters = 0) {
+  if (!isFollowing) return BUILDING_MARKER_OVERVIEW_LIFT
+  const eased = followZoomEase()
+  const zoomLift = BUILDING_MARKER_FOLLOW_MIN_LIFT + (BUILDING_MARKER_FOLLOW_MAX_LIFT - BUILDING_MARKER_FOLLOW_MIN_LIFT) * eased
+  const distanceT = clamp(1 - distanceMeters / buildingLabelMaxDistance(), 0, 1)
+  return zoomLift * distanceT
+}
+
+// from → to 방향의 나침반 방위각(도, 0=북쪽·시계방향).
+function bearingBetween(from, to) {
+  const toRad = (deg) => (deg * Math.PI) / 180
+  const lat1 = toRad(from[1])
+  const lat2 = toRad(to[1])
+  const deltaLng = toRad(to[0] - from[0])
+  const y = Math.sin(deltaLng) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng)
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+}
+
+// 두 방위각 사이의 최소 각도 차이(0~180도).
+function angleDifference(a, b) {
+  return Math.abs((((a - b + 540) % 360)) - 180)
+}
+
 function declutterBuildingMarkers() {
-  const markers = [...mockBuildingMarkers.values()]
-  const lift = buildingMarkerLift()
-  if (markers.length < 2) {
-    markers.forEach((marker) => marker.setOffset([0, lift]))
+  const allMarkers = [...mockBuildingMarkers.values()]
+
+  if (!isFollowing) {
+    // 항공뷰: 다 보여주되, 화면 픽셀 기준으로 서로 겹치면 밀어낸다. 항공뷰는 피치가
+    // 얕아(OVERVIEW_VIEW.pitch=25) map.project() 결과가 안정적이라 이 방식이 안전하다.
+    allMarkers.forEach((marker) => (marker.getElement().style.display = ''))
+    const lift = buildingMarkerLift()
+    if (allMarkers.length < 2) {
+      allMarkers.forEach((marker) => marker.setOffset([0, lift]))
+      return
+    }
+
+    const points = allMarkers.map((marker) => {
+      const { x, y } = map.project(marker.getLngLat())
+      return { x, y, dx: 0, dy: lift }
+    })
+
+    for (let iteration = 0; iteration < BUILDING_MARKER_DECLUTTER_ITERATIONS; iteration++) {
+      for (let i = 0; i < points.length; i++) {
+        for (let j = i + 1; j < points.length; j++) {
+          const a = points[i]
+          const b = points[j]
+          let deltaX = b.x + b.dx - (a.x + a.dx)
+          let deltaY = b.y + b.dy - (a.y + a.dy)
+          let distance = Math.hypot(deltaX, deltaY)
+          if (distance >= BUILDING_MARKER_MIN_SEPARATION_PX) continue
+
+          if (distance < 0.001) {
+            // 완전히 같은 지점이면 인덱스 기반 고정 각도로 밀어낸다 (매 프레임 방향이 바뀌지 않게).
+            const angle = i * GOLDEN_ANGLE_RADIANS
+            deltaX = Math.cos(angle)
+            deltaY = Math.sin(angle)
+            distance = 1
+          }
+
+          const push = (BUILDING_MARKER_MIN_SEPARATION_PX - distance) / 2
+          const normalizedX = (deltaX / distance) * push
+          const normalizedY = (deltaY / distance) * push
+          a.dx -= normalizedX
+          a.dy -= normalizedY
+          b.dx += normalizedX
+          b.dy += normalizedY
+        }
+      }
+    }
+
+    allMarkers.forEach((marker, index) => {
+      const { dx, dy } = points[index]
+      marker.setOffset([Math.round(dx), Math.round(dy)])
+    })
     return
   }
 
-  const points = markers.map((marker) => {
-    const { x, y } = map.project(marker.getLngLat())
-    return { x, y, dx: 0, dy: lift }
-  })
+  // 로드뷰: 예전엔 근처 캣타워를 다 띄워두고 화면 픽셀 거리로 서로 밀어내다 보니,
+  // 피치가 큰(최대 72도) 궤도 카메라에서 지평선 근처로 지나가는 좌표는
+  // map.project()가 화면 밖 수천~수만 px짜리 값을 뱉어서(관점 투영이 지평선 부근에서
+  // 발산) 그 값을 밀어내기 계산에 그대로 썼다가 라벨이 하늘로 튕겨 나가곤 했다.
+  //
+  // 지금 화면에 있는 건 다 후보로 두되(project() 결과가 뷰포트 근처의 "정상적인"
+  // 값일 때만 화면 안에 있는 걸로 친다 — 이게 바로 그 발산 값을 걸러내는 부분),
+  // 같은 방향(직선상)에 여러 개가 겹치면 그중 제일 가까운 것만 남긴다.
+  const origin = markerLngLat()
+  const { clientWidth, clientHeight } = map.getContainer()
+  const screenMarginX = clientWidth * 0.6
+  const screenMarginY = clientHeight * 0.6
+  const maxDistance = buildingLabelMaxDistance()
 
-  for (let iteration = 0; iteration < BUILDING_MARKER_DECLUTTER_ITERATIONS; iteration++) {
-    for (let i = 0; i < points.length; i++) {
-      for (let j = i + 1; j < points.length; j++) {
-        const a = points[i]
-        const b = points[j]
-        let deltaX = b.x + b.dx - (a.x + a.dx)
-        let deltaY = b.y + b.dy - (a.y + a.dy)
-        let distance = Math.hypot(deltaX, deltaY)
-        if (distance >= BUILDING_MARKER_MIN_SEPARATION_PX) continue
+  const candidates = []
+  for (const marker of allMarkers) {
+    const lngLat = marker.getLngLat()
+    const distance = distanceInMeters(origin, [lngLat.lng, lngLat.lat])
+    // 실제로 타워가 보일 만한 거리 밖이면 제외 — 안 그러면 피치가 거의 수평이라
+    // 수백m 밖 건물도 지평선 쪽으로 수학적으로만 화면 안에 들어와, 옆에 타워
+    // 모델도 없이 이름표만 하늘에 둥둥 뜬 것처럼 보인다.
+    if (distance > maxDistance) continue
 
-        if (distance < 0.001) {
-          // 완전히 같은 지점이면 인덱스 기반 고정 각도로 밀어낸다 (매 프레임 방향이 바뀌지 않게).
-          const angle = i * GOLDEN_ANGLE_RADIANS
-          deltaX = Math.cos(angle)
-          deltaY = Math.sin(angle)
-          distance = 1
-        }
+    // 지평선 부근에서 project()가 발산하면 여기서 걸러진다 — 정상 범위면 뷰포트
+    // 크기의 1.6배 이내 값이 나오고, 발산하면 수천~수만 px로 튀어서 바로 빠진다.
+    const { x, y } = map.project(lngLat)
+    if (x < -screenMarginX || x > clientWidth + screenMarginX) continue
+    if (y < -screenMarginY || y > clientHeight + screenMarginY) continue
 
-        const push = (BUILDING_MARKER_MIN_SEPARATION_PX - distance) / 2
-        const normalizedX = (deltaX / distance) * push
-        const normalizedY = (deltaY / distance) * push
-        a.dx -= normalizedX
-        a.dy -= normalizedY
-        b.dx += normalizedX
-        b.dy += normalizedY
-      }
-    }
+    candidates.push({ marker, distance, bearing: bearingBetween(origin, [lngLat.lng, lngLat.lat]) })
   }
 
-  markers.forEach((marker, index) => {
-    const { dx, dy } = points[index]
-    marker.setOffset([Math.round(dx), Math.round(dy)])
+  // 같은 방향(각도 차 15도 이내)에 나보다 더 가까운 후보가 있으면 가려진 걸로 보고 뺀다.
+  const shown = candidates.filter(
+    (candidate) =>
+      !candidates.some(
+        (other) =>
+          other !== candidate &&
+          other.distance < candidate.distance &&
+          angleDifference(other.bearing, candidate.bearing) <= BUILDING_LABEL_CLUSTER_ANGLE_DEG
+      )
+  )
+  const shownByMarker = new Map(shown.map((candidate) => [candidate.marker, candidate.distance]))
+
+  allMarkers.forEach((marker) => {
+    const distance = shownByMarker.get(marker)
+    const isVisible = distance !== undefined
+    marker.getElement().style.display = isVisible ? '' : 'none'
+    if (isVisible) marker.setOffset([0, buildingMarkerLift(distance)])
   })
 }
 
@@ -1925,6 +2030,49 @@ const catDetailPlace = catDetailScreen?.querySelector('.cat-detail-name-block p:
 const catDetailDate = catDetailScreen?.querySelector('.cat-detail-date')
 const catDetailRecord = catDetailScreen?.querySelector('.cat-detail-record p')
 const catDetailCount = catDetailScreen?.querySelector('.cat-detail-count')
+const catDetailMapCanvas = catDetailScreen?.querySelector('[data-cat-detail-map-canvas]')
+let catDetailMap = null
+
+// "발견한 장소" 미니맵: 처음 좌표가 생길 때만 생성한다(모달이 열려 컨테이너 크기가
+// 잡힌 뒤여야 maplibre가 정상적으로 렌더링되므로 지연 초기화).
+function ensureCatDetailMap() {
+  if (catDetailMap || !catDetailMapCanvas) return catDetailMap
+  catDetailMap = new maplibregl.Map({
+    container: catDetailMapCanvas,
+    style: '/monument-style.json',
+    zoom: 16,
+    pitch: 0,
+    bearing: 0,
+    interactive: false,
+    attributionControl: { compact: true },
+  })
+  return catDetailMap
+}
+
+// 백엔드마다 좌표 필드 이름이 다르다(초기 프론트: lat/lng, 배포 백엔드: latitude/longitude).
+// 둘 다 받아 { lat, lng } 형태로 통일한다. 유효한 숫자가 없으면 null.
+function normalizeLatLng(source) {
+  if (!source) return null
+  const lat = Number(source.lat ?? source.latitude)
+  const lng = Number(source.lng ?? source.longitude)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  return { lat, lng }
+}
+
+// location: normalizeLatLng이 만든 { lat, lng } 또는 null.
+function showCatDetailLocation(location) {
+  if (!catDetailMapCanvas) return
+  if (!location) {
+    catDetailMapCanvas.hidden = true
+    return
+  }
+  catDetailMapCanvas.hidden = false
+  const targetMap = ensureCatDetailMap()
+  if (!targetMap) return
+  targetMap.resize()
+  targetMap.flyTo({ center: [location.lng, location.lat], zoom: 16, duration: 600 })
+}
+
 const nicknameBtn = catDetailScreen?.querySelector('[data-nickname-edit]')
 const nicknameForm = catDetailScreen?.querySelector('[data-nickname-form]')
 const nicknameInput = nicknameForm?.querySelector('input')
@@ -2010,12 +2158,26 @@ async function openCatDetail(catId) {
     setDetail3DButtonAvailable(Boolean(detailCatModelUrl))
     if (catDetailDate) catDetailDate.textContent = cat.discoveredAt ? `${photoDateLabel(cat.discoveredAt)} 발견` : ''
     if (catDetailRecord) catDetailRecord.textContent = cat.description || cat.personality || '아직 기록이 없어요.'
-    if (catDetailPlace) catDetailPlace.textContent = cat.personality || ''
+    // 발견한 장소: 백엔드가 주는 discoveryLocation(배포 백엔드는 latitude/longitude/zoneName,
+    // 초기 프론트 버전은 lat/lng — normalizeLatLng이 둘 다 처리)을 우선 쓴다.
+    let discoveryLatLng = normalizeLatLng(cat.discoveryLocation)
+    if (catDetailPlace) catDetailPlace.textContent = cat.discoveryLocation?.zoneName || (discoveryLatLng ? '캠퍼스 어딘가' : '')
+    if (discoveryLatLng) showCatDetailLocation(discoveryLatLng)
 
     const sightingsData = await sightingsPromise
     const sightings = sightingsData.sightings ?? []
     if (catDetailCount && catDetailCount.lastChild) {
       catDetailCount.lastChild.textContent = ` ${sightings.length}회 목격`
+    }
+
+    // discoveryLocation이 아직 없으면(백엔드 미배포 등) 목격 기록 좌표로 폴백해 최소한
+    // 핀은 뜨게 한다. sightings는 최신순이라 가장 오래된(=발견 시점) 기록을 우선 쓴다.
+    if (!discoveryLatLng) {
+      discoveryLatLng = normalizeLatLng(sightings[sightings.length - 1]) ?? normalizeLatLng(sightings[0])
+      if (catDetailPlace && !cat.discoveryLocation?.zoneName && discoveryLatLng) {
+        catDetailPlace.textContent = '캠퍼스 어딘가'
+      }
+      showCatDetailLocation(discoveryLatLng)
     }
   } catch (error) {
     console.warn('고양이 상세를 불러오지 못했습니다.', error)
