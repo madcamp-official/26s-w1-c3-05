@@ -470,10 +470,61 @@ async function fetchCatActors(origin = markerLngLat()) {
   return response.json()
 }
 
+// 가장 최근에 받아온 cat-actor 목록. 사진 마커를 통째로 다시 그린 뒤(syncServerPhotos)
+// 도감 고양이 마커를 복구하는 데 쓴다.
+let lastCatActors = []
+
+// 지도 마커의 진짜 소스는 "도감에 등록된 고양이"다. 내가 찍은 사진이 없어도 마커가 떠야 하고,
+// 사진이 있어도 마커는 사진을 찍은 자리가 아니라 고양이가 서 있는 placement 위에 있어야 한다.
+function syncCatActorMarkers(actors) {
+  lastCatActors = actors
+  const discovered = actors.filter((actor) => actor.displayType === 'discovered_cat')
+  const discoveredIds = new Set(discovered.map((actor) => String(actor.catId)))
+
+  for (const actor of discovered) {
+    const position = [Number(actor.lng), Number(actor.lat)]
+    const group = photoMarkerGroupForCat(actor.catId)
+
+    if (group) {
+      group.position = position
+      group.markerInstance?.setLngLat(position)
+      // 아직 내 사진이 없는 마커는 고양이 대표 사진을 계속 따라간다.
+      if (group.photos.length === 0 && actor.mainImageUrl) {
+        group.dataUrl = actor.mainImageUrl
+        group.image.src = actor.mainImageUrl
+      }
+      continue
+    }
+
+    createMarkerGroup({
+      key: `cat-${actor.catId}`,
+      position,
+      accuracy: DEFAULT_GPS_ACCURACY_METERS,
+      catId: actor.catId,
+      dataUrl: actor.mainImageUrl ?? null,
+      representativeCreatedAt: null,
+      photos: [],
+      animate: false,
+    })
+  }
+
+  // 도감에서 빠졌거나 조회 반경 밖으로 나간 "내 사진이 없는" 마커는 정리한다.
+  // 내가 찍은 사진이 있는 마커는 반경과 무관하게 남긴다.
+  for (const [key, group] of photoMarkerGroups) {
+    if (group.photos.length > 0 || group.catId == null) continue
+    if (discoveredIds.has(String(group.catId))) continue
+    group.markerInstance?.remove()
+    photoMarkerGroups.delete(key)
+  }
+
+  updateCatMarkerPresentation()
+}
+
 async function refreshCatActors(origin = markerLngLat()) {
   if (!hasSession()) return []
   const { cats = [] } = await fetchCatActors(origin)
   animatedModelLayer.setCatActors(cats)
+  syncCatActorMarkers(cats)
   return cats
 }
 
@@ -492,6 +543,7 @@ async function initMapActors() {
   objects.forEach(addMockBuildingMarker)
   animatedModelLayer.setBuildingActors(objects)
   animatedModelLayer.setCatActors(cats)
+  syncCatActorMarkers(cats)
   animatedModelLayer.setAvatarPosition(origin)
 }
 
@@ -513,6 +565,7 @@ async function refetchMapActorsForGps(origin) {
     objects.forEach(addMockBuildingMarker)
     animatedModelLayer.setBuildingActors(objects)
     animatedModelLayer.setCatActors(cats)
+    syncCatActorMarkers(cats)
     animatedModelLayer.setAvatarPosition(origin)
   } catch (error) {
     mapActorsRefetchedForGps = false
@@ -520,15 +573,31 @@ async function refetchMapActorsForGps(origin) {
   }
 }
 
-function tryInitMapActors() {
+// initMapActors를 부르는 트리거는 'idle'과 enter-service 둘뿐이고 둘 다 부팅 직후에만
+// 발생한다. 그때 백엔드가 아직 안 떴거나 네트워크가 잠깐 끊기면 고양이도 건물도
+// 하나도 안 뜬 채로 세션이 끝나므로, 실패하면 지수 백오프로 몇 번 더 시도한다.
+const MAP_ACTORS_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000]
+let mapActorsRetryPending = false
+
+function tryInitMapActors(attempt = 0) {
   initMapActors().catch((error) => {
     mapActorsInitialized = false
-    console.warn('map actors failed to initialize:', error)
+    console.warn(`map actors failed to initialize (attempt ${attempt + 1}):`, error)
+
+    const delay = MAP_ACTORS_RETRY_DELAYS_MS[attempt]
+    // 두 트리거가 모두 실패해 재시도 체인이 둘로 갈라지지 않게 한 번에 하나만 예약한다.
+    if (delay == null || mapActorsRetryPending) return
+    mapActorsRetryPending = true
+    setTimeout(() => {
+      mapActorsRetryPending = false
+      tryInitMapActors(attempt + 1)
+    }, delay)
   })
 }
 
-map.once('idle', tryInitMapActors)
-window.addEventListener('catchme:enter-service', tryInitMapActors)
+// 이벤트 인자가 attempt로 들어가지 않도록 감싼다.
+map.once('idle', () => tryInitMapActors())
+window.addEventListener('catchme:enter-service', () => tryInitMapActors())
 
 let userPos = null // 최근 GPS 위치 [lng, lat]
 let userPosAccuracy = Infinity // 최근 GPS 정확도(미터)
@@ -1190,15 +1259,25 @@ function showLocationPhotos(photos) {
   })
 }
 
+// 고양이는 지도에서 딱 한 곳(cat_placements)에만 서 있으므로, 그 고양이의 마커도 하나뿐이다.
+// catId를 아는 사진은 거리와 무관하게 그 고양이의 마커에 합친다.
+function photoMarkerGroupForCat(catId) {
+  if (catId == null || String(catId) === '') return null
+  for (const group of photoMarkerGroups.values()) {
+    if (String(group.catId ?? '') === String(catId)) return group
+  }
+  return null
+}
+
 function nearestPhotoMarkerGroup(position, accuracy, catId) {
+  if (catId != null && String(catId) !== '') return photoMarkerGroupForCat(catId)
+
   let nearestGroup = null
   let nearestDistance = Infinity
 
+  // catId를 모르는 레거시 사진끼리만 거리로 묶는다.
   for (const group of photoMarkerGroups.values()) {
-    // 서로 다른 고양이가 가까운 곳에서 찍혔다고 마커 하나로 뭉쳐 보이면 안 되니,
-    // catId가 있는 사진끼리는 반드시 같은 고양이일 때만 묶는다(레거시 사진처럼
-    // catId를 모르는 경우엔 예전처럼 거리만으로 묶는다).
-    if (String(catId ?? '') !== String(group.catId ?? '')) continue
+    if (group.catId != null && String(group.catId) !== '') continue
 
     const distance = distanceInMeters(position, group.position)
     const groupingRadius = photoGroupRadius(accuracy, group.accuracy)
@@ -1210,42 +1289,19 @@ function nearestPhotoMarkerGroup(position, accuracy, catId) {
   return nearestGroup
 }
 
-function addPhotoMarker(photo, animate = true) {
-  const photoAccuracy = normalizedGpsAccuracy(photo.accuracy)
-  const existingGroup = nearestPhotoMarkerGroup(photo.position, photoAccuracy, photo.catId)
-
-  if (existingGroup) {
-    existingGroup.photos.push(photo)
-    existingGroup.photos.sort(newestPhotoFirst)
-    existingGroup.count = existingGroup.photos.length
-    existingGroup.accuracy = Math.max(existingGroup.accuracy, photoAccuracy)
-    existingGroup.badge.textContent = existingGroup.count
-    existingGroup.badge.hidden = false
-    existingGroup.element.setAttribute(
-      'aria-label',
-      `이 위치에서 찍은 고양이 사진 ${existingGroup.count}장 보기`
-    )
-
-    // 해당 좌표에서 가장 최근에 찍은 사진을 항상 대표 이미지로 사용한다.
-    if (new Date(photo.createdAt) > new Date(existingGroup.representativeCreatedAt)) {
-      existingGroup.dataUrl = photo.dataUrl
-      existingGroup.image.src = photo.dataUrl
-      existingGroup.representativeCreatedAt = photo.createdAt
-    }
-    return
-  }
-
+// 마커 하나를 만들어 지도에 올린다. 사진에서 만들 수도(addPhotoMarker), 도감에 등록된
+// 고양이에서 만들 수도(addCatActorMarker) 있어 공통 부분만 여기에 둔다.
+function createMarkerGroup({ key, position, accuracy, catId, dataUrl, representativeCreatedAt, photos, animate }) {
   const element = document.createElement('button')
   element.className = 'photo-marker photo-marker--model'
   element.type = 'button'
-  element.setAttribute('aria-label', '이 위치에서 찍은 고양이 사진 1장 보기')
 
   const bubble = document.createElement('span')
   bubble.className = 'photo-marker-bubble'
   if (!animate) bubble.classList.add('is-restored')
 
   const image = document.createElement('img')
-  image.src = photo.dataUrl
+  if (dataUrl) image.src = dataUrl
   image.alt = ''
   const badge = document.createElement('span')
   badge.className = 'photo-marker-count'
@@ -1255,28 +1311,33 @@ function addPhotoMarker(photo, animate = true) {
   element.append(bubble)
 
   const group = {
-    count: 1,
-    dataUrl: photo.dataUrl,
-    representativeCreatedAt: photo.createdAt,
-    photos: [photo],
-    position: photo.position,
-    accuracy: photoAccuracy,
-    catId: photo.catId ?? null,
+    count: photos.length,
+    dataUrl,
+    representativeCreatedAt,
+    photos,
+    position,
+    accuracy,
+    catId: catId ?? null,
     element,
     image,
     badge,
     markerInstance: null,
   }
-  photoMarkerGroups.set(photo.id, group)
-  animatedModelLayer.addCat(photo.id, photo.position)
+  photoMarkerGroups.set(key, group)
+  updateMarkerGroupPresentation(group)
 
   element.addEventListener('click', (event) => {
     event.stopPropagation()
+    // 내가 찍은 사진이 없는(도감에만 있는) 고양이는 대표 사진 한 장을 크게 보여준다.
+    if (group.photos.length === 0) {
+      if (group.dataUrl) showPhoto(group.dataUrl)
+      return
+    }
     showLocationPhotos(group.photos)
   })
 
-  // 이 사진 마커가 그 위치의 유일한 마커라, 3D 고양이 모델과 겹치지 않게
-  // catMarkerOffset()으로 위로 띄워둔다(줌/시점 전환 시 updateCatMarkerPresentation이 갱신).
+  // 마커가 3D 고양이 모델과 겹치지 않게 catMarkerOffset()으로 위로 띄운다
+  // (줌/시점 전환 시 updateCatMarkerPresentation이 갱신).
   group.markerInstance = new maplibregl.Marker({
     element,
     anchor: 'bottom',
@@ -1285,8 +1346,56 @@ function addPhotoMarker(photo, animate = true) {
     subpixelPositioning: true,
     offset: catMarkerOffset(),
   })
-    .setLngLat(photo.position)
+    .setLngLat(position)
     .addTo(map)
+
+  return group
+}
+
+// 배지와 aria-label은 사진 장수에 따라 달라진다.
+function updateMarkerGroupPresentation(group) {
+  group.badge.textContent = String(group.count)
+  group.badge.hidden = group.count <= 1
+  group.element.setAttribute(
+    'aria-label',
+    group.count === 0
+      ? '도감에 등록된 고양이 보기'
+      : `이 고양이 사진 ${group.count}장 보기`
+  )
+}
+
+function addPhotoMarker(photo, animate = true) {
+  const photoAccuracy = normalizedGpsAccuracy(photo.accuracy)
+  const existingGroup = nearestPhotoMarkerGroup(photo.position, photoAccuracy, photo.catId)
+
+  if (existingGroup) {
+    existingGroup.photos.push(photo)
+    existingGroup.photos.sort(newestPhotoFirst)
+    existingGroup.count = existingGroup.photos.length
+    existingGroup.accuracy = Math.max(existingGroup.accuracy, photoAccuracy)
+    updateMarkerGroupPresentation(existingGroup)
+
+    // 가장 최근에 찍은 사진을 대표 이미지로 사용한다. 사진 없이 도감에서 만들어진
+    // 마커(representativeCreatedAt이 없음)는 첫 사진이 들어오는 순간 대표를 넘겨준다.
+    if (!existingGroup.representativeCreatedAt
+        || new Date(photo.createdAt) > new Date(existingGroup.representativeCreatedAt)) {
+      existingGroup.dataUrl = photo.dataUrl
+      existingGroup.image.src = photo.dataUrl
+      existingGroup.representativeCreatedAt = photo.createdAt
+    }
+    return
+  }
+
+  createMarkerGroup({
+    key: photo.id,
+    position: photo.position,
+    accuracy: photoAccuracy,
+    catId: photo.catId ?? null,
+    dataUrl: photo.dataUrl,
+    representativeCreatedAt: photo.createdAt,
+    photos: [photo],
+    animate,
+  })
 }
 
 function distanceInMeters(from, to) {
@@ -1609,13 +1718,18 @@ async function syncServerPhotos() {
     const data = await getMySightings()
     const list = data.sightings ?? []
 
+    // 마커는 3D 고양이 모델 위에 떠야 하므로 placement 좌표를 쓴다. s.longitude/latitude는
+    // 촬영 당시 "내가 서 있던 GPS"라, 한 자리에서 여러 마리를 찍으면 좌표가 전부 같아져
+    // 마커들이 한 점에 겹치고 맨 위 하나만 보인다(= 마커가 안 뜨는 것처럼 보임).
     const serverPhotos = list.map((s) => ({
       id: `server-${s.id}`,
       dataUrl: s.imageUrl,
-      position: [Number(s.longitude), Number(s.latitude)],
+      position: s.placement
+        ? [Number(s.placement.longitude), Number(s.placement.latitude)]
+        : [Number(s.longitude), Number(s.latitude)],
       accuracy: 10,
       createdAt: s.createdAt,
-      catId: s.catId ? Number(s.catId) : null,
+      catId: s.catId ?? null,
     }))
 
     clearRenderedPhotoMarkers()
@@ -1626,8 +1740,11 @@ async function syncServerPhotos() {
 
     const combinedPhotos = [...localPhotos]
     serverPhotos.forEach((sp) => {
+      // catId는 로컬 사진이 문자열(업로드 응답의 String(cat.id)), 서버 목록도 문자열이다.
+      // 예전엔 서버 쪽을 Number로 바꿔 비교해 항상 불일치 → 중복 마커가 쌓였다.
       const exists = localPhotos.some(
-        (lp) => lp.id === sp.id || (lp.catId === sp.catId && distanceInMeters(lp.position, sp.position) < 2)
+        (lp) => lp.id === sp.id
+          || (String(lp.catId ?? '') === String(sp.catId ?? '') && distanceInMeters(lp.position, sp.position) < 2)
       )
       if (!exists) {
         combinedPhotos.push(sp)
@@ -1636,6 +1753,9 @@ async function syncServerPhotos() {
 
     catPhotos = combinedPhotos.sort(newestPhotoFirst)
     catPhotos.forEach((photo) => addPhotoMarker(photo, false))
+    // clearRenderedPhotoMarkers()가 도감 전용 마커까지 지웠으니 되살리고, 사진 마커도
+    // 고양이가 실제로 서 있는 placement 좌표로 다시 맞춘다.
+    syncCatActorMarkers(lastCatActors)
     renderGallery()
   } catch (error) {
     console.warn('서버에서 목격담 정보를 가져와 동기화하지 못했습니다.', error)

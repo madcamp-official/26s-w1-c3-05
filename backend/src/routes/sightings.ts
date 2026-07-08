@@ -162,6 +162,9 @@ sightingsRouter.post('/sightings', requireAuth, upload.single('image'), async (r
         longitude: body.longitude,
         zoneId,
         seenAt: takenAt,
+        // 3D 카메라는 월드에 이미 서 있는 고양이를 찍은 것이다. 랜덤 재배치를 하면
+        // 찍을 때마다 고양이가 6~10m씩 순간이동한다.
+        placement: { latitude: Number(placement.latitude), longitude: Number(placement.longitude) },
       })
 
       const { isNew } = await upsertCollection({

@@ -94,6 +94,11 @@ export const sighting = (row: CatSightingRow) => ({
   imageUrl: assetUrl(row.image_url),
   latitude: row.latitude,
   longitude: row.longitude,
+  // 지도 마커는 관측자 GPS가 아니라 고양이가 실제로 서 있는 placement 좌표에 찍혀야 한다.
+  // 같은 자리에서 여러 마리를 찍으면 sighting 좌표가 전부 같아 마커가 한 점에 겹친다.
+  placement: row.placement_latitude == null || row.placement_longitude == null
+    ? null
+    : { latitude: row.placement_latitude, longitude: row.placement_longitude },
   detectionStatus: 'matched',
   createdAt: row.created_at,
 })

@@ -432,7 +432,7 @@ export const applyRandomOffset = (latitude: number, longitude: number): { latitu
   }
 }
 
-export const createSighting = async (input: { catId: number; userId: number; photoId: number; latitude: number; longitude: number; zoneId?: number | null; seenAt: string }) => {
+export const createSighting = async (input: { catId: number; userId: number; photoId: number; latitude: number; longitude: number; zoneId?: number | null; seenAt: string; placement?: { latitude: number; longitude: number } }) => {
   const result = await query<CatSightingRow>(
     `INSERT INTO cat_sightings (cat_id, user_id, photo_id, latitude, longitude, zone_id, seen_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -444,7 +444,10 @@ export const createSighting = async (input: { catId: number; userId: number; pho
 
   // Shift placement coordinates by 6.0 - 10.0 meters in a random direction
   // so the cat/bush model doesn't overlap exactly with the user avatar.
-  const { latitude: placementLatitude, longitude: placementLongitude } = applyRandomOffset(input.latitude, input.longitude)
+  // Callers that photographed the cat where it already stands (3D virtual camera)
+  // pass the existing placement instead, so the cat doesn't teleport on every shot.
+  const { latitude: placementLatitude, longitude: placementLongitude } = input.placement
+    ?? applyRandomOffset(input.latitude, input.longitude)
 
   await upsertPlacement({
     catId: input.catId,
@@ -479,10 +482,12 @@ export const upsertPlacement = (input: { catId: number; sourceSightingId?: numbe
 
 export const findSightingsByUser = (userId: number) =>
   many<CatSightingRow>(
-    `SELECT s.*, p.image_url, c.name AS cat_name
+    `SELECT s.*, p.image_url, c.name AS cat_name,
+            pl.latitude AS placement_latitude, pl.longitude AS placement_longitude
      FROM cat_sightings s
      JOIN cat_photos p ON p.id = s.photo_id
      JOIN cats c ON c.id = s.cat_id
+     LEFT JOIN cat_placements pl ON pl.cat_id = s.cat_id
      WHERE s.user_id = $1
      ORDER BY s.created_at DESC`,
     [userId],

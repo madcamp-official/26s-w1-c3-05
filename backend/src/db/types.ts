@@ -109,6 +109,10 @@ export interface CatSightingRow {
   created_at: string
   image_url?: string
   cat_name?: string | null
+  // cat_placements에서 조인해 온다. sighting의 latitude/longitude는 "관측자가 서 있던
+  // GPS 좌표"라서 지도 위 고양이 모델 위치와 다르다(createSighting이 6~10m 오프셋해 배치).
+  placement_latitude?: number | null
+  placement_longitude?: number | null
 }
 
 export interface CatPlacementRow {
