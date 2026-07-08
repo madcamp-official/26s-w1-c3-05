@@ -1085,7 +1085,7 @@ export function createAnimatedModelLayer(map) {
           this.avatarWorldLayer?.setWalking(true)
 
           const bearing = bearingBetween(this.avatarPosition, position)
-          this.setAvatarFacing(bearing)
+          this.setAvatarFacing((bearing + 180) % 360)
 
           if (this.walkTimeout) {
             clearTimeout(this.walkTimeout)
