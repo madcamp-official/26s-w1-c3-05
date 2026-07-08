@@ -2079,10 +2079,64 @@ function restoreMapControls() {
   mapControlsBackup = null;
 }
 
+let isOrientationListenerActive = false;
+
+function startDeviceOrientationListener() {
+  if (isOrientationListenerActive) return;
+  
+  const handleOrientation = (event) => {
+    if (!window.is3DCameraActive) return;
+    if (cameraMode3d !== 'first-person') return;
+    if (isLookingAround) return; // 사용자가 화면을 스와이프하여 직접 회전 중일 때는 자이로 업데이트를 생략
+
+    if (event.alpha === null || event.beta === null) return;
+
+    let heading = null;
+    if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
+      heading = event.webkitCompassHeading;
+    } else if (event.alpha !== null && event.alpha !== undefined) {
+      heading = (360 - event.alpha) % 360;
+    }
+
+    if (heading !== null) {
+      currentBearing = heading;
+    }
+
+    if (event.beta !== null && event.beta !== undefined) {
+      // beta는 기기를 세웠을 때 90도에 가깝고, 눕히면 0도에 가깝습니다.
+      currentPitch = clamp(event.beta, FP_MIN_PITCH, FP_MAX_PITCH);
+    }
+
+    apply3DCamera();
+  };
+
+  const eventName = 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
+  window.addEventListener(eventName, handleOrientation, true);
+  isOrientationListenerActive = true;
+}
+
+async function requestDeviceOrientationPermission() {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const permissionState = await DeviceOrientationEvent.requestPermission();
+      if (permissionState === 'granted') {
+        startDeviceOrientationListener();
+      }
+    } catch (error) {
+      console.warn('DeviceOrientation permission request failed:', error);
+    }
+  } else {
+    startDeviceOrientationListener();
+  }
+}
+
 // 3D 카메라 모드 활성화
 function enable3DCameraMode() {
   window.is3DCameraActive = true;
   currentTargetCatId = null;
+
+  // 자이로센서/나침반 연동 (iOS 권한 포함)
+  requestDeviceOrientationPermission();
 
   // 1. 카메라 스트림 종료
   window.stopCameraStream?.();
