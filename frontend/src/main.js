@@ -1199,29 +1199,62 @@ function openPhotoDatabase() {
   })
 }
 
-async function readStoredPhotos() {
-  const database = await openPhotoDatabase()
+// 사진 저장소는 브라우저 전역이라 계정과 무관하게 남는다. 누구 사진인지 새겨두지 않으면
+// 같은 브라우저에서 계정을 바꿨을 때 이전 계정의 사진이 새 계정의 마커로 뜬다.
+function currentPhotoOwnerId() {
+  const id = getStoredUser()?.id
+  return id == null ? null : String(id)
+}
+
+function readAllStoredPhotos(database) {
   return new Promise((resolve, reject) => {
     const request = database
       .transaction(PHOTO_STORE_NAME, 'readonly')
       .objectStore(PHOTO_STORE_NAME)
       .getAll()
-    request.onsuccess = () => {
-      database.close()
-      resolve(request.result)
-    }
-    request.onerror = () => {
-      database.close()
-      reject(request.error)
-    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
   })
+}
+
+function deleteStoredPhotos(database, ids) {
+  if (ids.length === 0) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(PHOTO_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(PHOTO_STORE_NAME)
+    ids.forEach((id) => store.delete(id))
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error)
+  })
+}
+
+// 지금 로그인한 사용자의 사진만 돌려주고, 남의 사진은 저장소에서 지운다.
+// ownerId가 없는 예전 사진도 주인을 알 수 없으니 함께 지운다 — 그 사진이 정말 내 것이었다면
+// syncServerPhotos()가 /api/sightings/me에서 다시 받아온다.
+async function readStoredPhotos() {
+  const ownerId = currentPhotoOwnerId()
+  if (!ownerId) return [] // 로그인 전에는 아무것도 읽지도, 지우지도 않는다.
+
+  const database = await openPhotoDatabase()
+  try {
+    const photos = await readAllStoredPhotos(database)
+    const mine = photos.filter((photo) => String(photo.ownerId ?? '') === ownerId)
+    const foreign = photos.filter((photo) => String(photo.ownerId ?? '') !== ownerId)
+    if (foreign.length > 0) {
+      await deleteStoredPhotos(database, foreign.map((photo) => photo.id))
+    }
+    return mine
+  } finally {
+    database.close()
+  }
 }
 
 async function storePhoto(photo) {
   const database = await openPhotoDatabase()
+  const owned = { ...photo, ownerId: photo.ownerId ?? currentPhotoOwnerId() }
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(PHOTO_STORE_NAME, 'readwrite')
-    transaction.objectStore(PHOTO_STORE_NAME).put(photo)
+    transaction.objectStore(PHOTO_STORE_NAME).put(owned)
     transaction.oncomplete = () => {
       database.close()
       resolve()
