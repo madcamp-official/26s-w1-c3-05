@@ -315,8 +315,11 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
       if (!this.originCoordinate) this.updateOrigin()
       // 고양이 마커(DOM, 항상 지면 lng/lat)는 높이를 모른다. 여기서 actor.heightOffsetMeters로
       // 3D 모델을 실제로 띄우면(예: 옥상 고양이 12m) 카메라 원근 때문에 화면상 위치가 마커와
-      // 어긋나 보인다 — 마커 쪽 위치가 기준이므로, 3D 모델도 항상 지면 높이(0)에 투영한다.
-      const coordinate = MercatorCoordinate.fromLngLat([Number(actor.lng), Number(actor.lat)], 0)
+      // 어긋나 보이지만, 지면에 투영하면 타워 모델 내부로 묻히게 되므로 실제 높이를 반영하여 공중에 띄운다.
+      const coordinate = MercatorCoordinate.fromLngLat(
+        [Number(actor.lng), Number(actor.lat)],
+        Number(actor.heightOffsetMeters ?? 0)
+      )
       const visibilityScale = this.visibilityProgress * this.visibilityProgress * (3 - 2 * this.visibilityProgress)
       const scale =
         coordinate.meterInMercatorCoordinateUnits() *
