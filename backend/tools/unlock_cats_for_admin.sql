@@ -60,4 +60,15 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- 4. 목격담(cat_sightings) 및 사진(cat_photos)의 좌표를 고양이 배치(cat_placements) 좌표와 동일하게 동기화 (마커가 겹치지 않고 머리 위에 뜨도록)
+  UPDATE cat_sightings s
+  SET latitude = cp.latitude, longitude = cp.longitude
+  FROM cat_placements cp
+  WHERE cp.cat_id = s.cat_id;
+
+  UPDATE cat_photos p
+  SET latitude = cp.latitude, longitude = cp.longitude
+  FROM cat_placements cp
+  WHERE cp.cat_id = p.cat_id;
+
 END $$;
