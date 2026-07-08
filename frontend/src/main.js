@@ -78,9 +78,9 @@ const mockBuildingMarkers = new Map()
 const MOCK_MAP_MODE = false
 
 // 가까이서 볼 때(follow 시점 줌 범위) 사진 마커가 3D 고양이 모델과 겹치지 않게 위쪽으로 띄운다.
-const CAT_MARKER_DEFAULT_OFFSET = [0, -4]
-const CAT_MARKER_FOLLOW_MIN_OFFSET = [0, -8]
-const CAT_MARKER_CLOSE_OFFSET = [0, -20]
+const CAT_MARKER_DEFAULT_OFFSET = [0, -32]
+const CAT_MARKER_FOLLOW_MIN_OFFSET = [0, -45]
+const CAT_MARKER_CLOSE_OFFSET = [0, -80]
 
 function catMarkerOffset() {
   if (!isFollowing) return CAT_MARKER_DEFAULT_OFFSET
@@ -414,13 +414,15 @@ function updateCatMarkerPresentation() {
   const offset = catMarkerOffset()
   const center = map.getCenter()
   const centerLngLat = [center.lng, center.lat]
+  const zoom = map.getZoom()
 
   photoMarkerGroups.forEach((group) => {
     if (!group.markerInstance) return
     group.markerInstance.setOffset(offset)
 
     const distance = distanceInMeters(centerLngLat, group.position)
-    const isVisible = distance <= 350
+    // 줌 레벨이 16.5 미만(전체화면 오버뷰)이거나, 거리가 350m 이내일 때만 마커를 노출
+    const isVisible = zoom < 16.5 || distance <= 350
     group.element.style.display = isVisible ? '' : 'none'
   })
 }
