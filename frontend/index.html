@@ -50,7 +50,7 @@
         <button type="button" data-qa-go="profile">도감</button>
         <button type="button" data-qa-go="detail">고양이 상세</button>
         <button type="button" data-qa-go="favorites">즐겨찾기 목록</button>
-        <button type="button" data-qa-go="activity">내 활동 기록</button>
+        <button type="button" data-qa-go="activity">기록</button>
         <button type="button" data-qa-go="settings">설정</button>
         <button type="button" data-qa-go="gallery">갤러리(내 고양이)</button>
         <button type="button" data-qa-go="help">도움말</button>
@@ -538,10 +538,6 @@
             <span>찍은 사진</span>
             <strong>48</strong>
           </div>
-          <div class="profile-dex-stat">
-            <span>방문한 지역</span>
-            <strong>7</strong>
-          </div>
         </div>
 
         <section class="profile-dex-collection" aria-label="내 도감">
@@ -585,7 +581,7 @@
           </button>
           <button class="profile-dex-menu-item" type="button" data-open-activity>
             <span class="profile-dex-menu-icon" aria-hidden="true">🗒️</span>
-            <span>내 활동 기록</span>
+            <span>기록</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
           </button>
         </nav>
@@ -619,6 +615,14 @@
       </div>
 
       <canvas id="camera-canvas" hidden></canvas>
+    </section>
+
+    <!-- 고양이 상세 화면의 "고양이를 3D로 보기" 버튼이 여는 단독 3D 뷰어 -->
+    <section id="cat-3d-viewer" class="cat-3d-viewer" aria-label="고양이 3D 보기" hidden>
+      <button id="cat-3d-viewer-close" class="cat-3d-viewer-close" type="button" data-cat-3d-close aria-label="3D 보기 닫기">✕</button>
+      <p data-cat-3d-title class="cat-3d-viewer-title"></p>
+      <canvas id="cat-3d-viewer-canvas" class="cat-3d-viewer-canvas"></canvas>
+      <p data-cat-3d-status class="cat-3d-viewer-status" role="status" hidden></p>
     </section>
 
     <!-- 고양이 상세 (도감에서 고양이를 누르면 나오는 화면) -->
@@ -811,11 +815,11 @@
     </button>
 
     <!-- 폰 기본 카메라를 여는 파일 입력 (버튼이 대신 눌러줌) -->
-    <!-- TEMP: 검증용으로 capture 제거 → 카메라 대신 갤러리에서 사진 선택. 원복 시 capture="environment" 다시 추가 -->
     <input
       id="camera-input"
       type="file"
       accept="image/*"
+      capture="environment"
       hidden
     />
 
@@ -866,7 +870,7 @@
     </section>
 
     <!-- 내 활동 기록 (목격 히스토리) -->
-    <section id="activity-screen" class="profile-dex" aria-label="내 활동 기록" hidden>
+    <section id="activity-screen" class="profile-dex" aria-label="기록" hidden>
       <header class="profile-dex-header">
         <button class="profile-dex-icon-btn" type="button" data-activity-close aria-label="이전 화면으로 돌아가기">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
@@ -875,7 +879,7 @@
       <main class="profile-dex-main">
         <section class="profile-dex-collection" aria-label="목격 기록">
           <div class="profile-dex-collection-head">
-            <h2>🗒️ 내 활동 기록</h2>
+            <h2>🗒️ 기록</h2>
             <span class="profile-dex-progress" id="activity-count"></span>
           </div>
           <div class="activity-list" id="activity-list"></div>

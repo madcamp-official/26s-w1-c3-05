@@ -2657,7 +2657,7 @@ body {
 
 .profile-dex-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   margin-bottom: 22px;
   padding: 15px 8px;
   border-radius: 20px;
@@ -3870,6 +3870,10 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+.cat-detail-3d[hidden] {
+  display: none;
+}
+
 .cat-detail-3d:active {
   transform: scale(0.97);
 }
@@ -4178,6 +4182,82 @@ body {
 
 .camera-shutter:disabled {
   opacity: 0.7;
+}
+
+/* 도감 상세 → "고양이를 3D로 보기" 단독 뷰어 */
+.cat-3d-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 32;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 40%, #2f4a3c 0%, #16221b 75%);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  touch-action: none;
+}
+
+.cat-3d-viewer[hidden] {
+  display: none;
+}
+
+.cat-3d-viewer-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+
+.cat-3d-viewer-canvas:active {
+  cursor: grabbing;
+}
+
+.cat-3d-viewer-close {
+  position: absolute;
+  z-index: 2;
+  top: calc(18px + env(safe-area-inset-top));
+  left: 18px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #276c53;
+  box-shadow: 0 4px 14px rgba(16, 43, 31, 0.2);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.cat-3d-viewer-title {
+  position: absolute;
+  z-index: 2;
+  top: calc(28px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #276c53;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cat-3d-viewer-status {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: calc(48px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(22, 34, 27, 0.85);
+  color: #fff;
+  font-size: 13px;
+  text-align: center;
 }
 
 .camera-view::after {

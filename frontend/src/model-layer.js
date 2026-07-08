@@ -20,7 +20,7 @@ const AVATAR_SIZE_MULTIPLIER = 1.6
 const AVATAR_FOLLOW_SIZE_BOOST = 1.2
 // 오버뷰(항공뷰)에서는 실제 원근 비율대로면 너무 작아 보여서, 오버뷰 줌에서만 2배로
 // 키운다. 로드뷰 구간(줌 18 이상)에서는 1.0배로 돌아와 로드뷰 크기엔 영향 없다.
-const AVATAR_OVERVIEW_SIZE_BOOST = 2.0
+const AVATAR_OVERVIEW_SIZE_BOOST = 3.6
 
 const MODEL_BASE_ZOOM = 14.1
 const MODEL_ZOOM_EXPONENT = 0.41
@@ -76,6 +76,20 @@ const CAT_WORLD_CLOSE_HEIGHT_METERS = 4.68
 const CAT_WORLD_SCALE_ZOOM_START = 14.1
 const CAT_WORLD_SCALE_ZOOM_END = 18
 const CAT_WORLD_VISIBILITY_DURATION_SECONDS = 0.45
+
+// 미쿠 오버뷰↔로드뷰 전환 시 화면상 크기가 "작아졌다가 갑자기 커지는" 것처럼 보이던 문제 수정.
+// 오버뷰 줌(14.1)에서 로드뷰 시작 줌(main.js의 FOLLOW_START_ZOOM=20)까지, 지도 원근은
+// 줌마다 2배씩 커지는데(2^zoom) 기존에는 높이(modelHeightMeters)와 오버뷰 배율을 각각
+// 줌 14.1~18 구간에서 선형으로 줄이고 있어서, 전환 초반(원근 확대가 아직 작을 때)에는
+// 배율이 줄어드는 속도가 원근 확대 속도보다 빨라 순간적으로 작아졌다가, 줌 18을 넘기며
+// 원근 확대만 남아 갑자기 커지는 것처럼 보였다.
+// 해결: 높이×배율을 "로그 공간에서 선형 보간(기하 보간)"으로 바꾼다. 오버뷰→로드뷰 배율
+// 변화율(로그 기준 초당 -0.62/zoom)이 원근 확대율(+1/zoom)보다 항상 완만해서, 화면상 크기가
+// 확대 방향이면 항상 커지고 축소 방향이면 항상 작아지는 것이 수학적으로 보장된다.
+const AVATAR_TRANSITION_ZOOM_START = CAT_WORLD_SCALE_ZOOM_START // 오버뷰 줌과 동일
+const AVATAR_TRANSITION_ZOOM_END = 20 // main.js FOLLOW_START_ZOOM(=FOLLOW_MAX_ZOOM)과 맞출 것
+const AVATAR_OVERVIEW_HEIGHT_MULTIPLIER = CAT_WORLD_HEIGHT_METERS * AVATAR_OVERVIEW_SIZE_BOOST
+const AVATAR_FOLLOW_HEIGHT_MULTIPLIER = CAT_WORLD_CLOSE_HEIGHT_METERS * AVATAR_FOLLOW_SIZE_BOOST
 
 function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemplate, bushAnimations, loadModelTemplate }) {
   return {
@@ -301,6 +315,9 @@ function createCatWorldLayer({ THREE, cloneModel, template, animations, bushTemp
   }
 }
 
+// 로드뷰(팔로우)에서만 캣타워를 1.5배 더 크게 보여준다. 항공뷰 구도엔 영향 없다.
+const BUILDING_FOLLOW_SIZE_BOOST = 1.5
+
 function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
   return {
     id: 'mock-building-world-layer',
@@ -310,11 +327,17 @@ function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
     instances: new Map(),
     loadingIds: new Set(),
     originCoordinate: null,
+    isFollowing: false,
 
     setActors(actors) {
       this.actors = actors
       this.originCoordinate = null
       if (this.scene) this.syncActors()
+    },
+
+    setFollowing(isFollowing) {
+      this.isFollowing = Boolean(isFollowing)
+      this.map?.triggerRepaint?.()
     },
 
     onAdd(map, gl) {
@@ -365,7 +388,8 @@ function createBuildingWorldLayer({ THREE, cloneModel, loadModelTemplate }) {
       const scale =
         coordinate.meterInMercatorCoordinateUnits() *
         this.modelHeightMeters() *
-        Number(actor.modelScale ?? 1)
+        Number(actor.modelScale ?? 1) *
+        (this.isFollowing ? BUILDING_FOLLOW_SIZE_BOOST : 1)
       const matrix = new THREE.Matrix4()
         .makeTranslation(
           coordinate.x - this.originCoordinate.x,
@@ -536,16 +560,6 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       return true
     },
 
-    modelHeightMeters() {
-      const zoom = this.map?.getZoom?.() ?? CAT_WORLD_SCALE_ZOOM_START
-      const t = clamp(
-        (zoom - CAT_WORLD_SCALE_ZOOM_START) / (CAT_WORLD_SCALE_ZOOM_END - CAT_WORLD_SCALE_ZOOM_START),
-        0,
-        1
-      )
-      return CAT_WORLD_HEIGHT_METERS + (CAT_WORLD_CLOSE_HEIGHT_METERS - CAT_WORLD_HEIGHT_METERS) * t
-    },
-
     getScreenPosition() {
       if (!this.root || !this.camera || !this.map) return null
       const vector = new THREE.Vector3(0, 0.5, 0)
@@ -609,20 +623,19 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       if (!this.position || !this.originCoordinate) return new THREE.Matrix4()
       const coordinate = MercatorCoordinate.fromLngLat(this.position, 0)
       const visibilityScale = this.visibilityProgress * this.visibilityProgress * (3 - 2 * this.visibilityProgress)
-      const zoom = this.map?.getZoom?.() ?? CAT_WORLD_SCALE_ZOOM_START
-      const followT = clamp(
-        (zoom - CAT_WORLD_SCALE_ZOOM_START) / (CAT_WORLD_SCALE_ZOOM_END - CAT_WORLD_SCALE_ZOOM_START),
+      const zoom = this.map?.getZoom?.() ?? AVATAR_TRANSITION_ZOOM_START
+      const transitionT = clamp(
+        (zoom - AVATAR_TRANSITION_ZOOM_START) / (AVATAR_TRANSITION_ZOOM_END - AVATAR_TRANSITION_ZOOM_START),
         0,
         1
       )
-      const followSizeBoost = 1 + (AVATAR_FOLLOW_SIZE_BOOST - 1) * followT
-      const overviewSizeBoost = AVATAR_OVERVIEW_SIZE_BOOST + (1 - AVATAR_OVERVIEW_SIZE_BOOST) * followT
+      const heightMultiplier =
+        AVATAR_OVERVIEW_HEIGHT_MULTIPLIER *
+        (AVATAR_FOLLOW_HEIGHT_MULTIPLIER / AVATAR_OVERVIEW_HEIGHT_MULTIPLIER) ** transitionT
       const scale =
         coordinate.meterInMercatorCoordinateUnits() *
-        this.modelHeightMeters() *
+        heightMultiplier *
         AVATAR_SIZE_MULTIPLIER *
-        followSizeBoost *
-        overviewSizeBoost *
         visibilityScale
       const mapBearing = (this.map.getBearing() * Math.PI) / 180
 
@@ -695,6 +708,7 @@ export function createAnimatedModelLayer(map) {
       this.isFollowing = Boolean(isFollowing)
       if (this.catWorldLayer) this.catWorldLayer.setFollowing(this.isFollowing)
       if (this.avatarWorldLayer) this.avatarWorldLayer.setFollowing(this.isFollowing)
+      if (this.buildingWorldLayer) this.buildingWorldLayer.setFollowing(this.isFollowing)
     },
 
     setAvatarTransitioning(isTransitioning) {
@@ -820,6 +834,7 @@ export function createAnimatedModelLayer(map) {
         } else {
           this.map.addLayer(this.buildingWorldLayer)
         }
+        this.buildingWorldLayer.setFollowing(this.isFollowing)
         this.buildingWorldLayer.setActors(this.pendingBuildingActors)
       }
 
