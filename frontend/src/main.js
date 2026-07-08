@@ -2381,7 +2381,7 @@ function update3DCameraTarget() {
     cameraCrosshair.classList.remove('is-targeted');
     cameraTargetLabel.classList.remove('is-targeted');
     cameraTargetLabel.textContent = '고양이를 화면 중앙에 조준해주세요';
-    shutterBtn.disabled = true;
+    shutterBtn.disabled = false;
   }
 }
 
@@ -2523,7 +2523,12 @@ window.addEventListener('catchme:3d-close', () => {
 
 // Shutter 클릭 이벤트 수신 (3D 캡처 및 업로드)
 window.addEventListener('catchme:3d-capture', async () => {
-  if (!window.is3DCameraActive || !currentTargetCatId) return;
+  if (!window.is3DCameraActive) return;
+
+  if (!currentTargetCatId) {
+    window.alert('화면 중앙의 조준선(＋)에 고양이를 정확히 조준한 뒤 촬영 버튼을 눌러주세요!');
+    return;
+  }
 
   shutterBtn.disabled = true;
   cameraView.classList.add('is-capturing');
