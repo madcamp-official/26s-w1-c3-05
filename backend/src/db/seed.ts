@@ -26,28 +26,28 @@ await run("INSERT INTO users (id, username, password_hash, nickname, role) VALUE
 
 // type은 캣타워 3D 모델 색상 키(blue/green/pink/purple/yellow/gray_wood)로 지정한다 —
 // resolveBuildingModelKey()가 이 값으로 실제 에셋을 찾는다 (lib/buildingModels.ts 참고).
-await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (1, '중앙도서관', 'blue', 36.3727, 127.3602, 180, 'building', '중앙도서관 주변')")
-await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (2, 'N1', 'green', 36.3718, 127.3611, 150, 'building', 'N1 산책로 주변')")
+await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (1, '학생회관', 'blue', 36.3727, 127.3602, 180, 'building', '학생회관 주변')")
+await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (2, '본관', 'green', 36.3718, 127.3611, 150, 'building', '본관 산책로 주변')")
 await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (3, '생활관', 'pink', 36.3733, 127.3615, 200, 'building', '생활관 언덕 주변')")
 
 // 캠퍼스 전역 캣타워 배치 (실제 KAIST 좌표 기준).
 await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (4, '오리연못 캣타워', 'blue', 36.36735, 127.36345, 60, 'building', '오리연못 / E4 KI빌딩 근처 — 물가+산책로라 고양이 배치에 잘 맞음')")
 await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (5, '정문 캣타워', 'green', 36.36595, 127.36375, 60, 'building', '정문 안쪽 / E1 근처 — 첫 접속 시 랜드마크')")
-await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (6, '학술문화관 캣타워', 'pink', 36.36915, 127.36345, 60, 'building', '학술문화관 E9 / 중앙도서관 주변 — 유동인구 많은 메인 캣타워')")
-await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (7, '창의학습관 캣타워', 'purple', 36.37025, 127.36410, 60, 'building', '창의학습관 E11 주변 — 중앙부-동측 연결점')")
+await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (6, '학술문화관 캣타워', 'pink', 36.36915, 127.36345, 60, 'building', '학술문화관 E9 / 학생회관 주변 — 유동인구 많은 메인 캣타워')")
+await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (7, '자연과학동 캣타워', 'purple', 36.37025, 127.36410, 60, 'building', '자연과학동 E11 주변 — 중앙부-동측 연결점')")
 await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (8, '대강당 캣타워', 'yellow', 36.37145, 127.36370, 60, 'building', '대강당 E15 근처 — 큰 건물 옆 광장')")
 await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (9, '스포츠컴플렉스 캣타워', 'gray_wood', 36.37195, 127.36230, 60, 'building', '스포츠 컴플렉스 N3 근처 — 중앙 북쪽 허브')")
 await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (10, '학생식당 캣타워', 'blue', 36.37370, 127.36070, 60, 'building', 'N11 학생식당 / N12 학생회관 근처 — 북측 생활권')")
 await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (11, 'IT융합빌딩 캣타워', 'green', 36.37410, 127.36590, 60, 'building', 'N1 IT융합빌딩 근처 — 동문 쪽 접근 지점')")
-await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (12, '서측 학생회관 캣타워', 'pink', 36.36715, 127.35895, 60, 'building', 'W2 서측 학생회관/식당 근처 — 서측 생활권 핵심')")
+await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (12, '서측 기숙사 캣타워', 'pink', 36.36715, 127.35895, 60, 'building', 'W2 서측 기숙사/식당 근처 — 서측 생활권 핵심')")
 await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (13, '노천극장 캣타워', 'purple', 36.37070, 127.35745, 60, 'building', 'W9 노천극장 / 동산길 주변 — 언덕/숲 느낌')")
 await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (14, '기숙사 캣타워', 'yellow', 36.37175, 127.35510, 60, 'building', 'W5/W6 기숙사 밀집 구역 — 반복 방문 유도')")
-await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (15, '운동장 캣타워', 'gray_wood', 36.36785, 127.36625, 60, 'building', 'E17 운동장 근처 — 탁 트인 이벤트 타워')")
+await run("INSERT INTO campus_zones (id, name, type, latitude, longitude, radius_meters, model_type, description) VALUES (15, '전산학부동 캣타워', 'gray_wood', 36.36785, 127.36625, 60, 'building', 'E17 전산학부동 근처 — 탁 트인 이벤트 타워')")
 
 await run(
   `INSERT INTO cats
     (id, name, description, representative_photo_url, pattern, personality, default_latitude, default_longitude, default_zone_id, status)
-   VALUES (1, '망고', '중앙도서관 계단과 벤치 근처를 좋아하는 애교 많은 캠퍼스 고양이.', 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&w=500&q=80', 'cheese', '사람을 잘 따름', 36.3726, 127.3603, 1, 'active')`,
+   VALUES (1, '망고', '학생회관 계단과 벤치 근처를 좋아하는 애교 많은 캠퍼스 고양이.', 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&w=500&q=80', 'cheese', '사람을 잘 따름', 36.3726, 127.3603, 1, 'active')`,
 )
 await run(
   `INSERT INTO cats
