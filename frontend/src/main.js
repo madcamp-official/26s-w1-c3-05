@@ -2,6 +2,8 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { addFlowerDecorations } from './FlowerDecorations.js'
 import { createAnimatedModelLayer } from './model-layer.js'
+import { openCat3DViewer, preloadCat3DAssets } from './cat-3d-viewer.js'
+import { resolveCatModelAsset } from './cat-models.js'
 import { API_BASE_URL, authFetch, getStoredUser, hasSession, logout, updateStoredUser } from './auth.js'
 import {
   getCat,
@@ -67,6 +69,9 @@ const animatedModelLayer = createAnimatedModelLayer(map)
 const mockBuildingMarkers = new Map()
 const catMarkers = new Map()
 const MOCK_MAP_MODE = false
+// 캣타워는 완전히 고정된 좌표라, 미쿠 실제 위치가 타워와 겹치면 항공뷰에서 서로 가려버린다.
+// avatarDisplayPosition()이 이 목록을 기준으로 미쿠를 옆으로 살짝 밀어낸다.
+let buildingActorsCache = []
 
 // 가까이서 볼 때(follow 시점 줌 범위) 고양이 마커가 3D 모델과 겹치지 않게 위쪽으로 띄운다.
 const CAT_MARKER_DEFAULT_OFFSET = [0, -18]
@@ -175,20 +180,20 @@ initScene()
 function addMockBuildingMarker(object) {
   if (mockBuildingMarkers.has(object.id)) return
 
-  const marker = document.createElement('button')
-  marker.className = 'mock-building-marker'
-  marker.type = 'button'
-  marker.setAttribute('aria-label', `${object.name} mock building`)
+  const element = document.createElement('button')
+  element.className = 'mock-building-marker'
+  element.type = 'button'
+  element.setAttribute('aria-label', `${object.name} mock building`)
 
   const tower = document.createElement('span')
   tower.className = 'mock-building-marker-tower'
   const label = document.createElement('span')
   label.className = 'mock-building-marker-label'
   label.textContent = object.name
-  marker.append(tower, label)
+  element.append(tower, label)
 
-  new maplibregl.Marker({
-    element: marker,
+  const markerInstance = new maplibregl.Marker({
+    element,
     anchor: 'bottom',
     pitchAlignment: 'viewport',
     rotationAlignment: 'viewport',
@@ -197,8 +202,83 @@ function addMockBuildingMarker(object) {
     .setLngLat([object.lng, object.lat])
     .addTo(map)
 
-  mockBuildingMarkers.set(object.id, marker)
+  mockBuildingMarkers.set(object.id, markerInstance)
+  declutterBuildingMarkers()
 }
+
+// 항공뷰처럼 화면상 거리가 가까워지는 줌에서는 캣타워 라벨이 서로 겹쳐 가려진다.
+// 실제 좌표(setLngLat)는 그대로 두고, 화면 픽셀 오프셋(setOffset)만 밀어내는 방식이라
+// 확대해서 원래 좌표 간격이 벌어지면 자연히 오프셋이 0으로 돌아온다.
+const BUILDING_MARKER_MIN_SEPARATION_PX = 64
+const BUILDING_MARKER_DECLUTTER_ITERATIONS = 6
+const GOLDEN_ANGLE_RADIANS = 2.399963
+
+// 마커는 anchor: 'bottom'이라 타워 밑동(지면 좌표)에 그대로 두면 3D 타워 몸체를
+// 통째로 가려버린다. 타워 위로 띄워서 이름표처럼 보이게 한다. 로드뷰로 다가갈수록
+// 화면에서 타워가 커지므로(BUILDING_FOLLOW_SIZE_BOOST 포함) 띄우는 높이도 함께 키운다.
+const BUILDING_MARKER_OVERVIEW_LIFT = -20
+const BUILDING_MARKER_FOLLOW_MIN_LIFT = -35
+const BUILDING_MARKER_FOLLOW_MAX_LIFT = -120
+
+function buildingMarkerLift() {
+  if (!isFollowing) return BUILDING_MARKER_OVERVIEW_LIFT
+  const t = clamp((map.getZoom() - FOLLOW_MIN_ZOOM) / (FOLLOW_MAX_ZOOM - FOLLOW_MIN_ZOOM), 0, 1)
+  const eased = t * t * (3 - 2 * t)
+  return (
+    BUILDING_MARKER_FOLLOW_MIN_LIFT +
+    (BUILDING_MARKER_FOLLOW_MAX_LIFT - BUILDING_MARKER_FOLLOW_MIN_LIFT) * eased
+  )
+}
+
+function declutterBuildingMarkers() {
+  const markers = [...mockBuildingMarkers.values()]
+  const lift = buildingMarkerLift()
+  if (markers.length < 2) {
+    markers.forEach((marker) => marker.setOffset([0, lift]))
+    return
+  }
+
+  const points = markers.map((marker) => {
+    const { x, y } = map.project(marker.getLngLat())
+    return { x, y, dx: 0, dy: lift }
+  })
+
+  for (let iteration = 0; iteration < BUILDING_MARKER_DECLUTTER_ITERATIONS; iteration++) {
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const a = points[i]
+        const b = points[j]
+        let deltaX = b.x + b.dx - (a.x + a.dx)
+        let deltaY = b.y + b.dy - (a.y + a.dy)
+        let distance = Math.hypot(deltaX, deltaY)
+        if (distance >= BUILDING_MARKER_MIN_SEPARATION_PX) continue
+
+        if (distance < 0.001) {
+          // 완전히 같은 지점이면 인덱스 기반 고정 각도로 밀어낸다 (매 프레임 방향이 바뀌지 않게).
+          const angle = i * GOLDEN_ANGLE_RADIANS
+          deltaX = Math.cos(angle)
+          deltaY = Math.sin(angle)
+          distance = 1
+        }
+
+        const push = (BUILDING_MARKER_MIN_SEPARATION_PX - distance) / 2
+        const normalizedX = (deltaX / distance) * push
+        const normalizedY = (deltaY / distance) * push
+        a.dx -= normalizedX
+        a.dy -= normalizedY
+        b.dx += normalizedX
+        b.dy += normalizedY
+      }
+    }
+  }
+
+  markers.forEach((marker, index) => {
+    const { dx, dy } = points[index]
+    marker.setOffset([Math.round(dx), Math.round(dy)])
+  })
+}
+
+map.on('move', declutterBuildingMarkers)
 
 function addCatMarker(cat) {
   if (catMarkers.has(cat.catId)) return
@@ -317,6 +397,55 @@ function followModeMaxViewRadiusMeters(latitude) {
   return (viewportDiagonalPx / 2) * metersPerPixel
 }
 
+
+// 항공뷰에서 미쿠 실제 위치가 캣타워와 화면상 너무 가까우면(겹쳐 보이면) 캣타워는 고정이라
+// 옮길 수 없으니 미쿠 쪽을 타워 반대 방향으로 살짝 밀어낸다. 지도 카메라가 따라가거나
+// 사진 촬영 좌표로 쓰이는 실제 userPos는 건드리지 않고, 3D 레이어에 "그릴 위치"만 바꾼다.
+// 오버뷰는 pitch가 있어 원근이 압축되므로 지상 거리(m)가 아니라 declutterBuildingMarkers와
+// 같은 방식으로 화면 픽셀 거리를 기준으로 판단해야 실제로 겹쳐 보이는지를 정확히 잡아낸다.
+// 다만 이 줌에서는 픽셀 1개가 실제 몇 미터씩이나 되므로(항공뷰 전체가 캠퍼스 몇 km를
+// 담음), 픽셀 기준을 그대로 미터로 환산하면 수백 m씩 밀려날 수 있다 — 안전하게 상한을 둔다.
+const AVATAR_TOWER_MIN_SEPARATION_PX = 40
+const AVATAR_TOWER_MAX_PUSH_METERS = 250
+
+function avatarDisplayPosition(rawPosition) {
+  if (isFollowing || !rawPosition || buildingActorsCache.length === 0) return rawPosition
+
+  let [lng, lat] = rawPosition
+  const metersPerPixel = metersPerPixelAtZoom(map.getZoom(), lat)
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos((lat * Math.PI) / 180)
+
+  for (const tower of buildingActorsCache) {
+    const towerLng = Number(tower.lng)
+    const towerLat = Number(tower.lat)
+    const avatarPoint = map.project([lng, lat])
+    const towerPoint = map.project([towerLng, towerLat])
+    const pixelDistance = Math.hypot(avatarPoint.x - towerPoint.x, avatarPoint.y - towerPoint.y)
+    if (pixelDistance >= AVATAR_TOWER_MIN_SEPARATION_PX) continue
+
+    let directionLng = lng - towerLng
+    let directionLat = lat - towerLat
+    let directionLength = Math.hypot(directionLng, directionLat)
+    if (directionLength < 1e-9) {
+      // 완전히 같은 좌표면 고정된 방향(동쪽)으로 밀어낸다.
+      directionLng = 1
+      directionLat = 0
+      directionLength = 1
+    }
+
+    const pushMeters = Math.min(
+      (AVATAR_TOWER_MIN_SEPARATION_PX - pixelDistance) * metersPerPixel,
+      AVATAR_TOWER_MAX_PUSH_METERS
+    )
+    lng += (directionLng / directionLength) * (pushMeters / metersPerDegLng)
+    lat += (directionLat / directionLength) * (pushMeters / metersPerDegLat)
+  }
+
+  return [lng, lat]
+}
+
+
 async function fetchMapObjects(origin = markerLngLat()) {
   const params = new URLSearchParams({
     lat: String(origin[1]),
@@ -361,11 +490,12 @@ async function initMapActors() {
     fetchCatActors(origin),
   ])
 
+  buildingActorsCache = objects
   objects.forEach(addMockBuildingMarker)
   animatedModelLayer.setBuildingActors(objects)
   syncCatMarkers(cats)
   animatedModelLayer.setCatActors(cats)
-  animatedModelLayer.setAvatarPosition(origin)
+  animatedModelLayer.setAvatarPosition(avatarDisplayPosition(origin))
 }
 
 function clearMockBuildingMarkers() {
@@ -382,11 +512,13 @@ async function refetchMapActorsForGps(origin) {
   mapActorsRefetchedForGps = true
   try {
     const [{ objects }, { cats }] = await Promise.all([fetchMapObjects(origin), fetchCatActors(origin)])
+    buildingActorsCache = objects
     clearMockBuildingMarkers()
     objects.forEach(addMockBuildingMarker)
     animatedModelLayer.setBuildingActors(objects)
     syncCatMarkers(cats)
     animatedModelLayer.setCatActors(cats)
+    animatedModelLayer.setAvatarPosition(avatarDisplayPosition(origin))
   } catch (error) {
     mapActorsRefetchedForGps = false
     console.warn('GPS 위치 기준 맵 데이터 재조회 실패:', error)
@@ -453,7 +585,7 @@ function startPositionTracking() {
       userPos = [pos.coords.longitude, pos.coords.latitude]
       userPosAccuracy = pos.coords.accuracy
       userPosUpdatedAt = Date.now()
-      animatedModelLayer.setAvatarPosition(userPos)
+      animatedModelLayer.setAvatarPosition(avatarDisplayPosition(userPos))
       refetchMapActorsForGps(userPos)
       // 마커 시점일 때는 카메라도 내 위치를 따라감.
       // GPS 좌표가 튀어도 화면이 순간이동하지 않게 부드럽게 이동한다.
@@ -481,7 +613,7 @@ function refreshPositionForPhoto() {
         userPos = [pos.coords.longitude, pos.coords.latitude]
         userPosAccuracy = pos.coords.accuracy
         userPosUpdatedAt = Date.now()
-        animatedModelLayer.setAvatarPosition(userPos)
+        animatedModelLayer.setAvatarPosition(avatarDisplayPosition(userPos))
         resolve(true)
       },
       (error) => {
@@ -536,6 +668,11 @@ function setDefaultGestures(enabled) {
   }
 }
 
+// 항공뷰는 고정된 구도로만 보여준다. 사용자가 팬/줌/회전을 할 수 있게 두면 얻는
+// 것도 없이 매 프레임 3D 레이어(미쿠·고양이·캣타워)를 다시 투영해야 해서 렌더링
+// 비용만 든다. 더블탭(map.on('click'))은 이 핸들러들과 무관하게 계속 동작한다.
+setDefaultGestures(false)
+
 // ─────────────────────────────────────────────
 // 시점 토글: 마커 시점 ↔ 전체 지도 시점
 // ─────────────────────────────────────────────
@@ -580,10 +717,9 @@ function toggleView() {
       essential: true,
     })
   } else {
-    // 전체 캠퍼스 시점으로 복귀: 기본 제스처 다시 켜기.
+    // 전체 캠퍼스 시점으로 복귀: 항공뷰는 고정 구도라 기본 제스처를 계속 꺼둔다.
     // 1인칭에서 돌려놓은 방위도 기본 시점(-20°)으로 함께 되돌린다.
     // 팬+줌아웃+회전은 flyTo의 상승 곡선에 맡기면 자연스럽게 섞인다.
-    setDefaultGestures(true)
     map.flyTo({
       ...OVERVIEW_VIEW,
       padding: { top: 0, bottom: 0, left: 0, right: 0 },
@@ -1311,11 +1447,16 @@ async function restorePhotos() {
 }
 
 // 버튼을 누르면 다른 화면을 모두 닫고 실제 카메라 뷰파인더를 연다.
-// TEMP: 검증용으로 실시간 카메라(getUserMedia, HTTPS 필요) 건너뛰고 바로 갤러리 선택으로.
-// 원복 시 아래 if/else 블록을 되살리면 됨.
+// showCameraView는 index.html의 인라인 스크립트가 등록한다. getUserMedia를 지원하지
+// 않거나 권한이 없으면 그 안에서 폴백 안내를 띄우고, 셔터를 누르면 cameraInput.click()으로
+// 넘어간다(고양이 촬영 화면 하단 카메라-view 스크립트 참고).
 cameraBtn.addEventListener('click', () => {
   returnToMap()
-  cameraInput.click()
+  if (window.showCameraView) {
+    window.showCameraView()
+  } else {
+    cameraInput.click()
+  }
 })
 
 // 뷰파인더에서 촬영했거나 기본 카메라/앨범에서 고른 사진을 공통 처리한다.
@@ -1787,7 +1928,16 @@ const catDetailCount = catDetailScreen?.querySelector('.cat-detail-count')
 const nicknameBtn = catDetailScreen?.querySelector('[data-nickname-edit]')
 const nicknameForm = catDetailScreen?.querySelector('[data-nickname-form]')
 const nicknameInput = nicknameForm?.querySelector('input')
+const catDetail3DBtn = catDetailScreen?.querySelector('.cat-detail-3d')
 let detailCatId = null
+let detailCatModelUrl = null
+let detailCatModelScale = null
+
+// 발견 못 한 고양이는 보여줄 3D 모델이 없으므로 "고양이를 3D로 보기" 버튼 자체를 숨긴다.
+function setDetail3DButtonAvailable(isAvailable) {
+  if (!catDetail3DBtn) return
+  catDetail3DBtn.hidden = !isAvailable
+}
 
 function resetNicknameEditor() {
   if (nicknameForm) nicknameForm.hidden = true
@@ -1823,6 +1973,9 @@ function fillDetailPhoto(imageUrl, pattern) {
 async function openCatDetail(catId) {
   if (!catDetailScreen) return
   detailCatId = String(catId)
+  detailCatModelUrl = null
+  detailCatModelScale = null
+  setDetail3DButtonAvailable(false) // 다음 fetch가 끝나기 전엔 이전 고양이의 상태가 잠깐 보이지 않게 숨겨둔다.
   const item = dexCollectionById.get(String(catId))
   // 컬렉션 정보로 이름/즐겨찾기를 먼저 채워 깜빡임을 줄인다.
   setDetailName(item?.displayName || '???')
@@ -1834,16 +1987,32 @@ async function openCatDetail(catId) {
   catDetailScreen.hidden = false
 
   try {
-    const [cat, sightingsData] = await Promise.all([
-      getCat(catId),
-      getCatSightings(catId).catch(() => ({ sightings: [] })),
-    ])
+    // sightings는 이름/사진/3D 버튼과 무관한 "N회 목격" 텍스트에만 쓰인다. 예전엔
+    // Promise.all로 두 요청을 한데 묶어서, sightings가 조금만 늦어도 3D 버튼까지
+    // 같이 늦게 떴다. getCat만 먼저 기다리고 sightings는 별도로 나중에 반영한다.
+    const sightingsPromise = getCatSightings(catId).catch(() => ({ sightings: [] }))
+    const cat = await getCat(catId)
     setDetailName(item?.customName || cat.name || cat.displayName || '???')
     fillDetailPhoto(cat.mainImageUrl, cat.pattern)
+    // /api/cats/:catId(catDetail)는 modelUrl/modelScale을 내려주지 않고 pattern만 준다
+    // (백엔드 backend/src/lib/serializers.ts의 catDetail 확인됨). 백엔드 catModels.ts와
+    // 같은 규칙을 미러링한 cat-models.js로 여기서 계산해 저장해둔다. 발견 못 한 고양이는
+    // pattern이 null로 오므로 3D로 보여줄 모델이 없다 — 기본 모델로 대충 채우지 않고
+    // detailCatModelUrl을 null로 두고 버튼도 숨긴다.
+    if (cat.isDiscovered && cat.pattern) {
+      const modelAsset = resolveCatModelAsset(cat.pattern)
+      detailCatModelUrl = modelAsset.assetUrl
+      detailCatModelScale = modelAsset.scale
+      // 사용자가 3D 버튼을 누르기 전에 미리 three.js CDN 모듈과 glb 파일을 백그라운드로
+      // 받아둔다. 버튼을 누른 시점엔 대부분 캐시에서 바로 뜬다.
+      preloadCat3DAssets(detailCatModelUrl)
+    }
+    setDetail3DButtonAvailable(Boolean(detailCatModelUrl))
     if (catDetailDate) catDetailDate.textContent = cat.discoveredAt ? `${photoDateLabel(cat.discoveredAt)} 발견` : ''
     if (catDetailRecord) catDetailRecord.textContent = cat.description || cat.personality || '아직 기록이 없어요.'
     if (catDetailPlace) catDetailPlace.textContent = cat.personality || ''
 
+    const sightingsData = await sightingsPromise
     const sightings = sightingsData.sightings ?? []
     if (catDetailCount && catDetailCount.lastChild) {
       catDetailCount.lastChild.textContent = ` ${sightings.length}회 목격`
@@ -1868,6 +2037,16 @@ catDetailFav?.addEventListener('click', async () => {
     console.warn('즐겨찾기 변경에 실패했습니다.', error)
     setDetailFavorite(!next)
   }
+})
+
+// "고양이를 3D로 보기" — openCatDetail이 미리 계산해둔 modelUrl/modelScale을
+// 단독 3D 뷰어(cat-3d-viewer.js)에 그대로 넘긴다. 뷰어는 pattern이나 매핑 규칙을
+// 전혀 모르는 채로 주어진 modelUrl만 로드한다.
+catDetail3DBtn?.addEventListener('click', () => {
+  if (!detailCatId || !detailCatModelUrl) return
+  const item = dexCollectionById.get(detailCatId)
+  const name = item?.customName || item?.displayName || null
+  openCat3DViewer({ modelUrl: detailCatModelUrl, modelScale: detailCatModelScale, name })
 })
 
 // 새로 그린 카드도 클릭하면 해당 catId로 상세 화면이 열리도록 위임 리스너를 건다.
