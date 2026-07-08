@@ -133,6 +133,22 @@ function distanceMeters(from, to) {
   return 2 * earthRadius * Math.asin(Math.sqrt(a))
 }
 
+function bearingBetween(from, to) {
+  const rad = (deg) => (deg * Math.PI) / 180
+  const deg = (rad) => (rad * 180) / Math.PI
+
+  const lat1 = rad(from[1])
+  const lat2 = rad(to[1])
+  const dLng = rad(to[0] - from[0])
+
+  const y = Math.sin(dLng) * Math.cos(lat2)
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+
+  return (deg(Math.atan2(y, x)) + 360) % 360
+}
+
 const CAT_WORLD_HEIGHT_METERS = 20.0
 const CAT_WORLD_CLOSE_HEIGHT_METERS = 4.68
 const CAT_WORLD_SCALE_ZOOM_START = 14.1
@@ -676,9 +692,13 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
     // 지도 방위와 무관하게 그 나침반 방위각(북=0, 시계방향)을 바라본다. 3D 카메라의
     // 1인칭/셀카 모드에서 미쿠가 카메라를 등지거나 마주보게 하려고 쓴다.
     facingBearingDeg: null,
+    facingBearingRender: null,
 
     setFacingBearing(bearingDeg) {
       this.facingBearingDeg = bearingDeg == null ? null : Number(bearingDeg)
+      if (bearingDeg == null) {
+        this.facingBearingRender = null
+      }
       this.map?.triggerRepaint?.()
     },
 
@@ -973,9 +993,9 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       // scale의 y축 반전(-scale) + rotationX(90°) 탓에 yaw θ와 나침반 방위각 β는
       // θ = −β 로 대응한다(브라우저에서 실측 확인).
       const yaw =
-        this.facingBearingDeg == null
+        this.facingBearingRender == null
           ? Math.PI + mapBearing
-          : -(this.facingBearingDeg * Math.PI) / 180
+          : -(this.facingBearingRender * Math.PI) / 180
 
       const matrix = new THREE.Matrix4()
         .makeTranslation(
@@ -1002,6 +1022,18 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       if (!shouldRender) return
 
       this.updateClipPlane()
+
+      if (this.facingBearingDeg !== null) {
+        if (this.facingBearingRender === null) {
+          this.facingBearingRender = this.facingBearingDeg
+        } else {
+          let diff = this.facingBearingDeg - this.facingBearingRender
+          while (diff < -180) diff += 360
+          while (diff > 180) diff -= 360
+          this.facingBearingRender = (this.facingBearingRender + diff * 0.15 + 360) % 360
+        }
+      }
+
       this.root.matrix.copy(this.makeTransform())
       this.root.matrixWorldNeedsUpdate = true
 
@@ -1043,9 +1075,12 @@ export function createAnimatedModelLayer(map) {
 
       if (this.avatarPosition) {
         const dist = distanceMeters(this.avatarPosition, position)
-        // 0.3m 이상의 유의미한 움직임이 있을 때 걷기 애니메이션 재생
+        // 0.3m 이상의 유의미한 움직임이 있을 때 걷기 애니메이션 재생 및 각도 회전
         if (dist > 0.3) {
           this.avatarWorldLayer?.setWalking(true)
+
+          const bearing = bearingBetween(this.avatarPosition, position)
+          this.setAvatarFacing(bearing)
 
           if (this.walkTimeout) {
             clearTimeout(this.walkTimeout)
