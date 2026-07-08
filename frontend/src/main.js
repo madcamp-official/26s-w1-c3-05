@@ -447,10 +447,13 @@ function followModeMaxViewRadiusMeters(latitude) {
 
 
 async function fetchMapObjects(origin = markerLngLat()) {
+  // 지도가 아직 레이아웃되기 전이면 컨테이너가 0x0이라 반경도 0이 된다. 백엔드는 양수만
+  // 받으므로(400) 그대로 보내면 초기화 전체가 실패한다. 최소 1m로 깎아 요청은 성공시키고,
+  // 실제 반경은 GPS 확정 후 refetchMapActorsForGps가 다시 계산해 채운다.
   const params = new URLSearchParams({
     lat: String(origin[1]),
     lng: String(origin[0]),
-    radius: String(Math.round(followModeMaxViewRadiusMeters(origin[1]))),
+    radius: String(Math.max(1, Math.round(followModeMaxViewRadiusMeters(origin[1])))),
   })
   const response = await authFetch(`/api/map/objects?${params}`)
   if (!response.ok) throw new Error('건물 정보를 불러오지 못했습니다.')
@@ -528,6 +531,45 @@ async function refreshCatActors(origin = markerLngLat()) {
   return cats
 }
 
+// ── 다른 사용자가 올린 고양이·수풀 반영 (폴링) ──────────────────────────
+// refreshCatActors는 지금까지 "내가 사진을 찍었을 때"만 불렸다. 다른 사람이 새 고양이를
+// 등록하거나 기존 고양이를 다시 찍어 placement가 옮겨져도 내 화면은 새로고침 전까지
+// 그대로였다. setCatActors()가 catId로 인스턴스를 재사용하므로 폴링해도 모델을 다시
+// 로드하지 않고 위치만 갱신된다.
+const CAT_ACTOR_POLL_INTERVAL_MS = 10000
+let catActorPollTimer = null
+let catActorPollInFlight = false
+
+async function pollCatActors() {
+  // 백그라운드 탭에서 배터리·네트워크를 낭비하지 않는다.
+  if (document.hidden || !hasSession()) return
+  // 3D 가상 카메라로 조준 중에 고양이가 순간이동하면 촬영이 깨진다. 모드를 빠져나올 때
+  // 한 번 갱신하므로 여기서는 건너뛴다.
+  if (window.is3DCameraActive) return
+  // 느린 응답이 쌓여 요청이 겹치지 않게 한다.
+  if (catActorPollInFlight) return
+
+  catActorPollInFlight = true
+  try {
+    await refreshCatActors()
+  } catch (error) {
+    // 일시적인 네트워크 오류는 다음 틱에 자연히 재시도된다.
+    console.warn('지도 고양이 폴링에 실패했습니다.', error)
+  } finally {
+    catActorPollInFlight = false
+  }
+}
+
+function startCatActorPolling() {
+  if (catActorPollTimer) return
+  catActorPollTimer = setInterval(pollCatActors, CAT_ACTOR_POLL_INTERVAL_MS)
+}
+
+// 탭으로 돌아오면 다음 틱(최대 10초)을 기다리지 않고 즉시 최신 상태를 받아온다.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pollCatActors()
+})
+
 let mapActorsInitialized = false
 
 async function initMapActors() {
@@ -546,6 +588,7 @@ async function initMapActors() {
     animatedModelLayer.setCatActors(cats)
     syncCatActorMarkers(cats)
     animatedModelLayer.setAvatarPosition(origin)
+    startCatActorPolling()
   } catch (error) {
     mapActorsInitialized = false // 재시도할 수 있게 되돌린다.
     throw error
@@ -2168,6 +2211,9 @@ function disable3DCameraMode(restoreCameraStream = true) {
   if (restoreCameraStream && window.showCameraView) {
     window.showCameraView();
   }
+
+  // 5. 3D 모드 동안 폴링을 멈춰뒀으니, 빠져나오는 즉시 밀린 갱신을 한 번 받아온다.
+  pollCatActors();
 }
 
 // 3D 카메라 중앙 조준 대상 고양이 스캔
