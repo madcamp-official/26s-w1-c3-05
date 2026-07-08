@@ -58,6 +58,23 @@ const CAT_YAW_FOLLOW_FACTOR = 0.58
 const CAT_WORLD_GROUND_SINK = 0.016
 const BUSH_WORLD_GROUND_SINK = 0.008
 
+const FACE_MATERIAL_NAME = 'face_smiling'
+const FACE_TEXTURE_BASE_URL = '/models/textures/miku_face'
+const FACE_EXPRESSION_TEXTURE_URLS = {
+  angry: `${FACE_TEXTURE_BASE_URL}/face_angry.png`,
+  chatgpt_happy: `${FACE_TEXTURE_BASE_URL}/face_chatgpt_happy_1024.png`,
+  crying: `${FACE_TEXTURE_BASE_URL}/face_crying.png`,
+  matakke: `${FACE_TEXTURE_BASE_URL}/face_matakke2.png`,
+  face_smiling_closed: `${FACE_TEXTURE_BASE_URL}/face_smiling_closed.png`,
+  surprise: `${FACE_TEXTURE_BASE_URL}/face_surprise.png`,
+}
+// 애니메이션 클립 이름(소문자) -> 표정 텍스처 키. 매핑에 없으면 neutral(원본 텍스처) 유지.
+const ANIMATION_EXPRESSION_MAP = {
+  idle: 'chatgpt_happy',
+  walk_inplace: 'neutral',
+  excited_jump: 'face_smiling_closed',
+}
+
 function distanceMeters(from, to) {
   const radians = (degrees) => (degrees * Math.PI) / 180
   const earthRadius = 6371000
@@ -502,6 +519,56 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       this.map?.triggerRepaint?.()
     },
 
+    findFaceMeshes() {
+      const faceMeshes = []
+      this.model?.traverse((object) => {
+        if (!object.isMesh) return
+        const materials = Array.isArray(object.material) ? object.material : [object.material]
+        if (materials.some((material) => material?.name === FACE_MATERIAL_NAME)) {
+          faceMeshes.push(object)
+        }
+      })
+      return faceMeshes
+    },
+
+    loadExpressionTexture(key) {
+      if (!this.expressionTextureCache) this.expressionTextureCache = new Map()
+      if (this.expressionTextureCache.has(key)) return this.expressionTextureCache.get(key)
+
+      const url = FACE_EXPRESSION_TEXTURE_URLS[key]
+      if (!url) return null
+
+      const texture = new THREE.TextureLoader().load(url, () => {
+        texture.colorSpace = THREE.SRGBColorSpace
+        texture.anisotropy = this.maxTextureAnisotropy || 1
+        texture.flipY = false
+        texture.needsUpdate = true
+        this.map?.triggerRepaint?.()
+      })
+      this.expressionTextureCache.set(key, texture)
+      return texture
+    },
+
+    applyExpression(expressionKey) {
+      if (!this.faceMeshes?.length) return
+
+      const texture =
+        expressionKey === 'neutral' || !expressionKey
+          ? this.neutralFaceTexture
+          : this.loadExpressionTexture(expressionKey)
+      if (!texture) return
+
+      for (const mesh of this.faceMeshes) {
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        for (const material of materials) {
+          if (material?.name !== FACE_MATERIAL_NAME) continue
+          material.map = texture
+          material.needsUpdate = true
+        }
+      }
+      this.map?.triggerRepaint?.()
+    },
+
     playAnimation(name) {
       if (!this.mixer || !animations?.length) return false
       const clip = animations.find((c) => c.name.toLowerCase() === name.toLowerCase()) ??
@@ -517,6 +584,7 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
 
       action.reset().fadeIn(0.2).play()
       this.activeAction = action
+      this.applyExpression(ANIMATION_EXPRESSION_MAP[clip.name.toLowerCase()])
 
       const returnToIdle = () => {
         this.mixer.removeEventListener('finished', returnToIdle)
@@ -526,6 +594,7 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
           idleAction.reset().fadeIn(0.25).play()
           action.fadeOut(0.25)
           this.activeAction = idleAction
+          this.applyExpression(ANIMATION_EXPRESSION_MAP[idleClip.name.toLowerCase()] ?? 'neutral')
         }
       }
 
@@ -584,6 +653,12 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
       this.renderer.outputColorSpace = THREE.SRGBColorSpace
 
       this.model = cloneModel(template)
+      this.faceMeshes = this.findFaceMeshes()
+      const firstFaceMaterials = Array.isArray(this.faceMeshes[0]?.material)
+        ? this.faceMeshes[0].material
+        : [this.faceMeshes[0]?.material]
+      this.neutralFaceTexture =
+        firstFaceMaterials.find((material) => material?.name === FACE_MATERIAL_NAME)?.map ?? null
 
       this.root = new THREE.Group()
       this.root.matrixAutoUpdate = false
@@ -596,6 +671,7 @@ function createAvatarWorldLayer({ THREE, cloneModel, template, animations }) {
         if (idleClip) {
           this.activeAction = this.mixer.clipAction(idleClip)
           this.activeAction.play()
+          this.applyExpression(ANIMATION_EXPRESSION_MAP[idleClip.name.toLowerCase()] ?? 'neutral')
         }
         this.mixers.push(this.mixer)
       }
