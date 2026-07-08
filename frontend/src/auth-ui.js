@@ -290,7 +290,14 @@ nicknameSetupForm?.addEventListener('submit', async (event) => {
 })
 
 document.querySelector('[data-guest-entry]').addEventListener('click', (event) => {
-  runAuth(event.currentTarget, document.querySelector('#welcome-auth-message'), '접속 중…', loginAsGuest)
+  runAuth(event.currentTarget, document.querySelector('#welcome-auth-message'), '접속 중…', async () => {
+    const data = await loginAsGuest()
+    // 게스트는 매번 새 계정이라, 이전 세션이 로그아웃 없이 끝났더라도(탭 종료, 토큰
+    // 만료 등) 로컬에 남아있는 사진은 전부 이전 손님 것이다. 새 게스트 계정이 만들어진
+    // 이 시점에 확실히 지워서 남의 사진 마커를 이어받지 않게 한다.
+    window.resetGuestLocalPhotos?.()
+    return data
+  })
 })
 
 document.querySelector('[data-social-login="google"]').addEventListener('click', (event) => {

@@ -1555,6 +1555,26 @@ async function restorePhotos() {
   }
 }
 
+// 게스트 로그인은 항상 새 계정(랜덤 id)을 만들기 때문에, 로그인 시점에 로컬에 남아있는
+// 사진은 100% 이전 세션의 것이다. 로그아웃 경로(버튼 클릭, 401로 인한 자동 로그아웃,
+// 로그아웃 없이 탭을 닫고 다시 게스트로 들어오는 경우 등)를 전부 잡아내려 하는 대신,
+// "새 게스트 계정이 만들어지는 그 순간"에 한 번만 확실히 비우면 어떤 경로로 이전
+// 세션이 끝났든 항상 깨끗한 상태로 시작할 수 있다. 페이지 로드 시 restorePhotos()가
+// 로그인 전에 이미 지도에 마커를 그려둔 상태일 수 있으므로, 렌더된 마커도 함께 지운다.
+function clearRenderedPhotoMarkers() {
+  for (const group of photoMarkerGroups.values()) {
+    group.markerInstance?.remove()
+  }
+  photoMarkerGroups.clear()
+  catPhotos = []
+  renderGallery()
+}
+
+window.resetGuestLocalPhotos = () => {
+  clearRenderedPhotoMarkers()
+  clearStoredPhotos().catch((error) => console.warn('게스트 로컬 사진을 정리하지 못했습니다.', error))
+}
+
 // 버튼을 누르면 다른 화면을 모두 닫고 실제 카메라 뷰파인더를 연다.
 // showCameraView는 index.html의 인라인 스크립트가 등록한다. getUserMedia를 지원하지
 // 않거나 권한이 없으면 그 안에서 폴백 안내를 띄우고, 셔터를 누르면 cameraInput.click()으로
