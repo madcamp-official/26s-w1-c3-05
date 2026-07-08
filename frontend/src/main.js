@@ -2080,14 +2080,30 @@ function restoreMapControls() {
 }
 
 let isOrientationListenerActive = false;
+let smoothedBearing = null;
+let smoothedPitch = null;
 
 function startDeviceOrientationListener() {
   if (isOrientationListenerActive) return;
   
+  function smoothAngle(current, target, factor) {
+    let diff = target - current;
+    while (diff < -180) diff += 360;
+    while (diff > 180) diff -= 360;
+    return (current + diff * factor + 360) % 360;
+  }
+
   const handleOrientation = (event) => {
     if (!window.is3DCameraActive) return;
     if (cameraMode3d !== 'first-person') return;
-    if (isLookingAround) return; // 사용자가 화면을 스와이프하여 직접 회전 중일 때는 자이로 업데이트를 생략
+    
+    // 사용자가 직접 화면을 드래그 중일 때는 센서 업데이트를 하지 않고,
+    // 스와이프 조작이 끝났을 때 현재 시점을 기준으로 센서 연동을 시작하도록 리셋합니다.
+    if (isLookingAround) {
+      smoothedBearing = null;
+      smoothedPitch = null;
+      return;
+    }
 
     if (event.alpha === null || event.beta === null) return;
 
@@ -2098,13 +2114,28 @@ function startDeviceOrientationListener() {
       heading = (360 - event.alpha) % 360;
     }
 
-    if (heading !== null) {
-      currentBearing = heading;
+    let targetPitch = null;
+    if (event.beta !== null && event.beta !== undefined) {
+      targetPitch = clamp(event.beta, FP_MIN_PITCH, FP_MAX_PITCH);
     }
 
-    if (event.beta !== null && event.beta !== undefined) {
-      // beta는 기기를 세웠을 때 90도에 가깝고, 눕히면 0도에 가깝습니다.
-      currentPitch = clamp(event.beta, FP_MIN_PITCH, FP_MAX_PITCH);
+    // LERP_FACTOR가 낮을수록 반응 속도가 서서히 감쇠(Damping)하여 감도가 부드러워집니다.
+    const LERP_FACTOR = 0.12;
+
+    if (heading !== null) {
+      if (smoothedBearing === null) {
+        smoothedBearing = currentBearing;
+      }
+      smoothedBearing = smoothAngle(smoothedBearing, heading, LERP_FACTOR);
+      currentBearing = smoothedBearing;
+    }
+
+    if (targetPitch !== null) {
+      if (smoothedPitch === null) {
+        smoothedPitch = currentPitch;
+      }
+      smoothedPitch = smoothedPitch + (targetPitch - smoothedPitch) * LERP_FACTOR;
+      currentPitch = smoothedPitch;
     }
 
     apply3DCamera();
