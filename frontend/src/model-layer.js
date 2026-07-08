@@ -119,7 +119,7 @@ const ANIMATION_EXPRESSION_MAP = {
   walk_inplace: 'neutral',
   excited_jump: 'face_smiling_closed',
   crying: 'crying',
-  angry: 'angry',
+  angry: 'matakke',
   surprised: 'surprise',
 }
 
