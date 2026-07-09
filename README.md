@@ -67,6 +67,9 @@
 
 https://github.com/user-attachments/assets/b7d42af8-d734-4066-ae65-4b6fe02ee1d8
 
+
+https://github.com/user-attachments/assets/a47bf57f-4e0f-4d8e-b94c-af2f9a79501f
+
 ---
 
 ## IA 및 화면 설계서
