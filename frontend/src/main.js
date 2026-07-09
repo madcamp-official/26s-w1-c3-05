@@ -163,7 +163,7 @@ async function applyTextures() {
 // 스타일이 파싱되면(레이어 생성 시점) 텍스처 적용.
 // 'load' 이벤트는 sprite/glyphs 로딩이 느리면 지연될 수 있어 'styledata'로 트리거.
 // 꽃 밀도 분포: 아바타 중심 반경 안에 촘촘히 모으고 바깥은 옅게 흩뿌린다.
-const FLOWER_DENSITY = { falloffRadiusMeters: 55, baseline: 0.02 }
+const FLOWER_DENSITY = { falloffRadiusMeters: 45, baseline: 0.02 }
 let flowerCenter = null // 현재 꽃 밀도가 어느 좌표를 중심으로 계산됐는지
 let flowersRecenteredForGps = false // 첫 실제 GPS로 재배치했는지(딱 한 번)
 

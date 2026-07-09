@@ -7,7 +7,7 @@ import { MercatorCoordinate } from 'maplibre-gl'
 // ─────────────────────────────────────────────
 export const FLOWER_DECORATION_CONFIG = {
   layerId: 'flower-decorations',
-  count: 15000,
+  count: 20000,
   seed: 20260704,
   bounds: {
     west: 127.3544,
