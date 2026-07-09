@@ -2129,6 +2129,48 @@ let isOrientationListenerActive = false;
 let smoothedBearing = null;
 let smoothedPitch = null;
 
+const DEG2RAD = Math.PI / 180;
+
+// ── 자세각(alpha/beta/gamma) → 시선 방향 벡터 ────────────────────────
+// beta(전후 기울기)만으로 pitch를 구하고 alpha만으로 heading을 구하면, 폰을
+// 거의 수직으로 세워 위를 올려다볼 때(beta→90°) 두 회전축이 거의 겹치는
+// 짐벌락이 생긴다. 이 근방에서는 손이 살짝 롤(gamma)되기만 해도 OS가
+// alpha/gamma를 어떻게 나눠 보고하는지가 불안정해지는데, 기존 코드는 gamma를
+// 아예 무시하고 alpha만 읽었기 때문에 그 흔들림이 그대로 "위를 볼 때 갑자기
+// 오른쪽으로 도는" 현상으로 드러났다. alpha/beta/gamma 세 값을 한 번에
+// 회전행렬로 합성해 "시선이 실제로 가리키는 3D 방향"을 구하고 거기서
+// heading/pitch를 역산하면, gamma의 기여가 항상 기하학적으로 올바르게
+// 반영되어 이 결합이 사라진다. (W3C Orientation Event 표준의
+// device→Earth(ENU) 회전행렬 3번째 열 = 화면 법선(+Z)이 월드 좌표계에서
+// 가리키는 방향. 폰을 화면을 마주보는 "창문"처럼 들고 쓰므로, 실제로 보는
+// 방향은 그 반대인 -Z(폰 뒤쪽)이다.)
+function lookVectorFromOrientation(alphaDeg, betaDeg, gammaDeg) {
+  const a = alphaDeg * DEG2RAD;
+  const b = betaDeg * DEG2RAD;
+  const g = gammaDeg * DEG2RAD;
+  const cA = Math.cos(a), sA = Math.sin(a);
+  const cB = Math.cos(b), sB = Math.sin(b);
+  const cG = Math.cos(g), sG = Math.sin(g);
+
+  return {
+    east: -(cA * sG + cG * sA * sB),
+    north: -(sA * sG - cA * cG * sB),
+    up: -(cB * cG),
+  };
+}
+
+// 수평 성분이 거의 0이면(거의 똑바로 위/아래를 보는 중) heading이 정의되지
+// 않으므로 null을 돌려주고, 호출부가 직전 값을 그대로 유지하게 한다.
+function headingFromLookVector(look) {
+  if (Math.hypot(look.east, look.north) < 0.02) return null;
+  return ((Math.atan2(look.east, look.north) / DEG2RAD) + 360) % 360;
+}
+
+function pitchFromLookVector(look) {
+  const elevationDeg = Math.asin(clamp(look.up, -1, 1)) / DEG2RAD;
+  return elevationDeg + 90; // 0=발밑을 내려다봄 … 90=수평선
+}
+
 function startDeviceOrientationListener() {
   if (isOrientationListenerActive) return;
   
@@ -2153,17 +2195,19 @@ function startDeviceOrientationListener() {
 
     if (event.alpha === null || event.beta === null) return;
 
-    let heading = null;
-    if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
-      heading = event.webkitCompassHeading;
-    } else if (event.alpha !== null && event.alpha !== undefined) {
-      heading = (360 - event.alpha) % 360;
-    }
+    const look = lookVectorFromOrientation(event.alpha, event.beta, event.gamma ?? 0);
 
-    let targetPitch = null;
-    if (event.beta !== null && event.beta !== undefined) {
-      targetPitch = clamp(event.beta, FP_MIN_PITCH, FP_MAX_PITCH);
-    }
+    // heading(좌우)은 iOS의 webkitCompassHeading(자체적으로 기울기 보정된 진북
+    // 값)이 있으면 그대로 쓰고, 없는 플랫폼(대부분 Android)에서는 시선 벡터에서
+    // 유도한다 — 예전처럼 alpha만 읽지 않아 짐벌락 근방에서도 안정적이다.
+    const heading =
+      event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null
+        ? event.webkitCompassHeading
+        : headingFromLookVector(look);
+
+    // pitch(위/아래)는 항상 beta+gamma를 함께 합성한 시선 벡터에서 구한다 —
+    // beta만 그대로 쓰면 롤(gamma)이 섞여 들어올 때 값이 어긋난다.
+    const targetPitch = clamp(pitchFromLookVector(look), FP_MIN_PITCH, FP_MAX_PITCH);
 
     // LERP_FACTOR가 낮을수록 반응 속도가 서서히 감쇠(Damping)하여 감도가 부드러워집니다.
     const LERP_FACTOR = 0.12;
@@ -2176,13 +2220,11 @@ function startDeviceOrientationListener() {
       currentBearing = smoothedBearing;
     }
 
-    if (targetPitch !== null) {
-      if (smoothedPitch === null) {
-        smoothedPitch = currentPitch;
-      }
-      smoothedPitch = smoothedPitch + (targetPitch - smoothedPitch) * LERP_FACTOR;
-      currentPitch = smoothedPitch;
+    if (smoothedPitch === null) {
+      smoothedPitch = currentPitch;
     }
+    smoothedPitch = smoothedPitch + (targetPitch - smoothedPitch) * LERP_FACTOR;
+    currentPitch = smoothedPitch;
 
     apply3DCamera();
   };
