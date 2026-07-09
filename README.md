@@ -63,6 +63,11 @@
 </table>
 
 ---
+## 시연 영상
+
+https://github.com/user-attachments/assets/b7d42af8-d734-4066-ae65-4b6fe02ee1d8
+
+---
 
 ## IA 및 화면 설계서
 
