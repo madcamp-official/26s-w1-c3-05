@@ -72,7 +72,63 @@
 - **Figma 디자인:** [Figma 링크](https://www.figma.com/design/TlUTjkjFJAzOmrYmchn3nz/%EB%AC%98%EC%BA%A3%EB%AA%AC%EA%B3%A0?node-id=3-2&p=f&t=UWYx75Opi0zk6MiR-0)
 
 ---
-!KakaoTalk_Photo_2026-07-08-23-55-38_cropped.png
+**로그인**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/d180e48b-2f35-4522-af18-6eb498e38742" />
+
+---
+**닉네임 설정**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/86b65d39-dfe9-4f04-9978-2aba9d4184d4" />
+
+---
+**고양이 지도(항공뷰)**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/256cd025-2b3f-4cff-a3d2-6ebaa9d3d51d" />
+
+---
+**고양이 지도(로드뷰)**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/866a52c5-03af-4a54-b12b-b18ce33a4f59" />
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/42fdcac1-b680-4781-90e4-11e7ea72ac68" />
+
+---
+**고양이 촬영**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/e7ff6c50-3f05-4813-a80f-72473e5825d9" />
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/f270724a-113f-41a8-ae7b-086b1404272b" />
+
+---
+**3D 카메라**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/b1652bae-21bf-4168-b5dd-9deedb051194" />
+
+---
+**사이드 바**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/78db01ab-3bca-404f-843a-2bfc8ce7cb1d" />
+
+---
+**도감**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/846c880f-d38c-461d-ab41-1437f4275fa5" />
+
+---
+**도움말**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/9603bdae-0f53-476e-9911-8f7678234842" />
+
+---
+**설정**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/bbe4c3a7-b323-433d-b2f5-fad0d0e826f2" />
+
+---
+**기록**
+
+<img width="270" height="488" alt="Image" src="https://github.com/user-attachments/assets/2dac37bf-a310-4d96-8132-fd1fac562b82" />
+
+---
 
 
 [Figma 와이어프레임](https://www.figma.com/design/TlUTjkjFJAzOmrYmchn3nz/%EB%AC%98%EC%BA%A3%EB%AA%AC%EA%B3%A0?node-id=3-2&p=f&t=UWYx75Opi0zk6MiR-0)
