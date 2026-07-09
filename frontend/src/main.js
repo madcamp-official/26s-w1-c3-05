@@ -162,6 +162,38 @@ async function applyTextures() {
 
 // 스타일이 파싱되면(레이어 생성 시점) 텍스처 적용.
 // 'load' 이벤트는 sprite/glyphs 로딩이 느리면 지연될 수 있어 'styledata'로 트리거.
+// 꽃 밀도 분포: 아바타 중심 반경 안에 촘촘히 모으고 바깥은 옅게 흩뿌린다.
+const FLOWER_DENSITY = { falloffRadiusMeters: 55, baseline: 0.02 }
+let flowerCenter = null // 현재 꽃 밀도가 어느 좌표를 중심으로 계산됐는지
+let flowersRecenteredForGps = false // 첫 실제 GPS로 재배치했는지(딱 한 번)
+
+function placeFlowers(center) {
+  flowerCenter = center
+  addFlowerDecorations(map, {
+    ...FLOWER_DECORATION_CONFIG,
+    densityBias: { center, ...FLOWER_DENSITY },
+  })
+}
+
+// 밀도는 로드 시 1회 계산되는데, 그때 GPS가 아직이면 기본 좌표(캠퍼스 중앙)가 중심이 된다.
+// 첫 실제 GPS가 들어오면 그 위치로 꽃을 딱 한 번만 다시 배치해, 캠퍼스 밖/엉뚱한 기본
+// 위치에 꽃이 뭉치는 걸 막는다(캣타워의 refetchMapActorsForGps와 같은 패턴).
+// GPS 추적 로직 자체는 손대지 않고, 밀도 중심만 진짜 내 위치로 맞춘다.
+function recenterFlowersForGps(origin) {
+  if (flowersRecenteredForGps || !flowerCenter) return
+  if (!map.getLayer(FLOWER_DECORATION_CONFIG.layerId)) return
+  flowersRecenteredForGps = true
+  // 기본 좌표와 거의 같은 자리면 다시 그릴 필요가 없다.
+  if (distanceInMeters(flowerCenter, origin) < 30) return
+  try {
+    map.removeLayer(FLOWER_DECORATION_CONFIG.layerId)
+    placeFlowers(origin)
+  } catch (error) {
+    flowersRecenteredForGps = false
+    console.warn('꽃 밀도 GPS 재배치 실패:', error)
+  }
+}
+
 let sceneInited = false
 function initScene() {
   if (sceneInited) return
@@ -169,13 +201,9 @@ function initScene() {
   sceneInited = true
   applyTextures()
   try {
-    // 아바타(GPS) 위치는 이 시점(첫 styledata/load)엔 아직 없을 수 있어 markerLngLat()의
-    // 기본 폴백(DEFAULT_QUERY_POSITION)이 기준점이 된다 — 밀도는 로드 시 1회만 계산되고
-    // 이후 아바타가 움직여도 다시 계산하지 않는다(의도된 단순화).
-    addFlowerDecorations(map, {
-      ...FLOWER_DECORATION_CONFIG,
-      densityBias: { center: markerLngLat(), falloffRadiusMeters: 110, baseline: 0.05 },
-    })
+    // 이 시점(첫 styledata/load)엔 GPS가 아직 없을 수 있어 markerLngLat()의 기본 폴백
+    // (DEFAULT_QUERY_POSITION)이 중심이 된다. 실제 GPS는 recenterFlowersForGps가 채운다.
+    placeFlowers(markerLngLat())
   } catch (error) {
     console.warn('꽃 장식 초기화 실패:', error)
   }
@@ -726,6 +754,7 @@ function startPositionTracking() {
       userPosUpdatedAt = Date.now()
       animatedModelLayer.setAvatarPosition(userPos)
       refetchMapActorsForGps(userPos)
+      recenterFlowersForGps(userPos)
       // 1인칭 카메라는 center가 "아바타 앞쪽 지면"이라 easeTo(center=내 위치)를 태우면
       // 시점이 통째로 3인칭으로 돌아가버린다. 눈높이 카메라를 새 위치로 다시 계산한다.
       if (window.is3DCameraActive) {
